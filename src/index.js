@@ -11,6 +11,7 @@ app.use(express.json());
 // Логирование всех запросов
 app.use((req, res, next) => {
   console.log(`Received ${req.method} request at ${req.path}`);
+  if (req.body) console.log('Request body:', JSON.stringify(req.body));
   next();
 });
 
@@ -39,6 +40,10 @@ const User = mongoose.model('User', UserSchema);
 
 // Инициализация бота
 const bot = new Telegraf(process.env.BOT_TOKEN);
+bot.catch((err, ctx) => {
+  console.error('Telegraf error:', err);
+  if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
+});
 
 // ЮKassa конфигурация
 const { createPayment, checkPayment } = require('./yookassa');
@@ -213,6 +218,7 @@ bot.start(async (ctx) => {
 
   try {
     let user = await User.findOne({ userId });
+    console.log('User found or to be created:', user ? 'exists' : 'new');
     if (!user) {
       console.log('Creating new user:', userId);
       user = await User.findOneAndUpdate(
