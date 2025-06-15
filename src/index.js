@@ -111,17 +111,17 @@ const setMainMenu = async (ctx, silent = false) => {
         await ctx.reply('Главное меню:', keyboard);
       } else {
         await ctx.telegram.sendChatAction(ctx.chat.id, 'typing'); // Имитация активности
-        // Проверяем, есть ли последнее сообщение с клавиатурой
+        // Пытаемся обновить клавиатуру предыдущего сообщения
         try {
           await ctx.telegram.editMessageReplyMarkup(
               ctx.chat.id,
-              ctx.message.message_id - 1,
+              ctx.message ? ctx.message.message_id : (await ctx.getChat()).last_message?.message_id,
               undefined,
               keyboard.reply_markup
           );
         } catch (editError) {
           console.warn(`Failed to edit keyboard for user ${userId}, sending new:`, editError.message);
-          await ctx.reply('.', keyboard); // Отправляем минимальное сообщение
+          await ctx.reply('', keyboard); // Отправляем пустое сообщение с клавиатурой
         }
       }
     } else {
@@ -135,13 +135,13 @@ const setMainMenu = async (ctx, silent = false) => {
         try {
           await ctx.telegram.editMessageReplyMarkup(
               ctx.chat.id,
-              ctx.message.message_id - 1,
+              ctx.message ? ctx.message.message_id : (await ctx.getChat()).last_message?.message_id,
               undefined,
               { remove_keyboard: true }
           );
         } catch (editError) {
           console.warn(`Failed to remove keyboard for user ${userId}:`, editError.message);
-          await ctx.reply('.', { reply_markup: { remove_keyboard: true } });
+          await ctx.reply('', { reply_markup: { remove_keyboard: true } });
         }
       }
     }
@@ -195,7 +195,7 @@ bot.start(async (ctx) => {
     } else {
       await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     }
-    await setMainMenu(ctx);
+    await setMainMenu(ctx, true); // Убираем "Главное меню:"
 
     const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
