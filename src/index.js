@@ -48,26 +48,49 @@ bot.catch((err, ctx) => {
 // ЮKassa конфигурация
 const { createPayment, checkPayment } = require('./yookassa');
 
+// Задержка для избежания лимитов Telegram API
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Установка команд главного меню
 const setMainMenu = async (userId) => {
-  const isAdmin = userId === process.env.ADMIN_CHAT_ID;
-  const commands = [];
-  if (isAdmin) {
-    commands.push({ command: 'admin', description: 'Админ панель' });
+  try {
+    await delay(100); // Задержка для избежания лимитов
+    const isAdmin = userId === process.env.ADMIN_CHAT_ID;
+    const commands = [
+      { command: 'buy', description: 'Оплатить доступ к каналу' },
+      { command: 'check_payment', description: 'Проверить статус оплаты' },
+      { command: 'renew_link', description: 'Обновить ссылку на канал' },
+    ];
+    if (isAdmin) {
+      commands.push({ command: 'admin', description: 'Админ панель' });
+    }
+    await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
+    console.log('Main menu set for userId:', userId);
+  } catch (error) {
+    console.error('Error setting main menu for userId', userId, ':', error.stack);
   }
-  await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
 };
 
+// Установка меню поддержки
 const setSupportMenu = async (userId) => {
-  const isAdmin = userId === process.env.ADMIN_CHAT_ID;
-  const commands = [];
-  if (isAdmin) {
-    commands.push({ command: 'admin', description: 'Админ панель' });
+  try {
+    await delay(100); // Задержка для избежания лимитов
+    const isAdmin = userId === process.env.ADMIN_CHAT_ID;
+    const commands = [
+      { command: 'support', description: 'Связаться с поддержкой' },
+      { command: 'renew_link', description: 'Обновить ссылку на канал' },
+    ];
+    if (isAdmin) {
+      commands.push({ command: 'admin', description: 'Админ панель' });
+    }
+    await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
+    console.log('Support menu set for userId:', userId);
+  } catch (error) {
+    console.error('Error setting support menu for userId', userId, ':', error.stack);
   }
-  await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
 };
 
-// Обработчик команды /start (с приоритетом)
+// Обработчик команды /start
 bot.start(async (ctx) => {
   console.log('Received /start command from', ctx.from.id);
   const userId = ctx.from.id.toString();
@@ -85,6 +108,7 @@ bot.start(async (ctx) => {
           { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
           { upsert: true, new: true }
       );
+      console.log('User created:', user);
       await setMainMenu(userId);
     } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
       await setSupportMenu(userId);
@@ -93,16 +117,18 @@ bot.start(async (ctx) => {
     console.log('Sending reply to', userId);
     await ctx.replyWithMarkdown(
         `*Привет!* Я очень рада видеть тебя тут! 😊  
-Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
-Давай экономить вместе ❤️
+      Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
+      Давай экономить вместе ❤️
 
-**Почему это выгодно?**
-- 🚚 *Быстрая доставка*
-- 💸 *Ооооочеень низкие цены*
-- 📱 *Все заказы можно сделать через Вконтакте*`,
+      **Почему это выгодно?**
+      - 🚚 *Быстрая доставка*
+      - 💸 *Ооооочеень низкие цены*
+      - 📱 *Все заказы можно сделать через Вконтакте*`,
         {
           reply_markup: {
             inline_keyboard: [
+              [{ text: 'Оплатить доступ', callback_data: 'buy' }],
+              [{ text: 'О канале', callback_data: 'about' }],
               ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
             ],
           },
@@ -110,7 +136,7 @@ bot.start(async (ctx) => {
     );
     console.log('Reply sent to', userId);
   } catch (error) {
-    console.error('Error in /start for user', userId, ':', error);
+    console.error('Error in /start for user', userId, ':', error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
   }
 });
@@ -122,41 +148,48 @@ bot.on('message', async (ctx) => {
   const { first_name, username, phone_number } = ctx.from;
   console.log('Received message from', userId, 'in chat', chatId, 'text:', ctx.message?.text);
 
-  let user = await User.findOne({ userId });
-  if (!user) {
-    try {
+  try {
+    let user = await User.findOne({ userId });
+    console.log('User found or to be created:', user ? 'exists' : 'new');
+    if (!user) {
       console.log('Creating new user:', userId);
       user = await User.findOneAndUpdate(
           { userId },
           { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
           { upsert: true, new: true }
       );
+      console.log('User created:', user);
       await setMainMenu(userId);
-    } catch (error) {
-      console.error('Error creating user:', error);
+    } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
+      console.log('User', userId, 'is a paid subscriber');
+      await setSupportMenu(userId);
     }
-  } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
-    console.log('User', userId, 'is a paid subscriber');
-    await setSupportMenu(userId);
+
+    console.log('Sending reply to', userId);
+    await ctx.replyWithMarkdown(
+        `*Привет!* Я очень рада видеть тебя тут! 😊  
+      Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
+      Давай экономить вместе ❤️
+
+      **Почему это выгодно?**
+      - 🚚 *Быстрая доставка*
+      - 💸 *Ооооочеень низкие цены*
+      - 📱 *Все заказы можно сделать через Вконтакте*`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: 'Оплатить доступ', callback_data: 'buy' }],
+              [{ text: 'О канале', callback_data: 'about' }],
+              ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
+            ],
+          },
+        }
+    );
+    console.log('Reply sent to', userId);
+  } catch (error) {
+    console.error('Error in message handler for user', userId, ':', error.stack);
+    await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
   }
-
-  await ctx.replyWithMarkdown(
-      `*Привет!* Я очень рада видеть тебя тут! 😊  
-Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
-Давай экономить вместе ❤️
-
-**Почему это выгодно?**
-- 🚚 *Быстрая доставка*
-- 💸 *Ооооочеень низкие цены*
-- 📱 *Все заказы можно сделать через Вконтакте*`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
-          ],
-        },
-      }
-  ).catch(error => console.error('Error sending reply:', error));
 });
 
 // Обработчик корневого пути
@@ -246,7 +279,7 @@ app.post('/webhook/yookassa', async (req, res) => {
         );
         await setSupportMenu(userId);
       } catch (error) {
-        console.error('Error processing webhook:', error);
+        console.error('Error processing webhook:', error.stack);
         await bot.telegram.sendMessage(
             user.chatId,
             'Ошибка при создании ссылки на канал. Пожалуйста, свяжитесь с поддержкой.'
@@ -273,7 +306,7 @@ bot.action('admin', async (ctx) => {
       },
     });
   } catch (error) {
-    console.error('Error in /admin:', error);
+    console.error('Error in /admin:', error.stack);
     await ctx.reply('Ошибка при открытии админ-панели.');
   }
 });
@@ -285,20 +318,25 @@ bot.action('support', async (ctx) => {
         'Если у вас возникли вопросы или проблемы, напишите в техническую поддержку: @YourSupportUsername или свяжитесь через [почту](mailto:support@example.com).'
     );
   } catch (error) {
-    console.error('Error in /support:', error);
+    console.error('Error in /support:', error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
 
 bot.action('about', async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.replyWithMarkdown(
-      'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊'
-  );
+  try {
+    await ctx.replyWithMarkdown(
+        'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊'
+    );
+  } catch (error) {
+    console.error('Error in /about:', error.stack);
+    await ctx.reply('Произошла ошибка. Попробуйте позже.');
+  }
 });
 
-// Команда покупки
-bot.command('buy', async (ctx) => {
+bot.action('buy', async (ctx) => {
+  await ctx.answerCbQuery();
   const userId = ctx.from.id.toString();
   const chatId = ctx.chat.id.toString();
 
@@ -341,7 +379,7 @@ bot.command('buy', async (ctx) => {
       },
     });
   } catch (error) {
-    console.error('Payment error:', error);
+    console.error('Payment error:', error.stack);
     await ctx.reply('Произошла ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
   }
 });
@@ -369,7 +407,7 @@ bot.command('check_payment', async (ctx) => {
     }
     return ctx.reply('Платёж ещё не завершён или возникла ошибка. Попробуйте позже.');
   } catch (error) {
-    console.error('Error in /check_payment:', error);
+    console.error('Error in /check_payment:', error.stack);
     await ctx.reply('Произошла ошибка при проверке статуса. Попробуйте позже.');
   }
 });
@@ -413,7 +451,7 @@ bot.command('renew_link', async (ctx) => {
       },
     });
   } catch (error) {
-    console.error('Error in /renew_link:', error);
+    console.error('Error in /renew_link:', error.stack);
     await ctx.reply('Ошибка при обновлении ссылки. Свяжитесь с поддержкой.');
   }
 });
@@ -478,7 +516,7 @@ bot.action('export_subscribers', async (ctx) => {
         { caption: 'Список оплаченных подписчиков' }
     );
   } catch (error) {
-    console.error('Error exporting subscribers:', error);
+    console.error('Error exporting subscribers:', error.stack);
     await ctx.reply('Ошибка при выгрузке подписчиков. Попробуйте позже.');
   }
 });
@@ -491,7 +529,7 @@ app.listen(PORT, async () => {
     await bot.telegram.setWebhook(`https://${process.env.RENDER_URL}/bot${process.env.BOT_TOKEN}`);
     console.log('Webhook set');
   } catch (error) {
-    console.error('Failed to set webhook:', error);
+    console.error('Failed to set webhook:', error.stack);
   }
 });
 

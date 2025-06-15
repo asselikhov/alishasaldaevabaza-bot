@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 const SHOP_ID = process.env.YOOKASSA_SHOP_ID;
 const SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
-const createPayment = async ({ amount, description, paymentId, userId }) => {
+const createPayment = async ({ amount, description, paymentId, userId, returnUrl }) => {
   try {
     const response = await fetch('https://api.yookassa.ru/v3/payments', {
       method: 'POST',
@@ -21,7 +21,7 @@ const createPayment = async ({ amount, description, paymentId, userId }) => {
         capture: true,
         confirmation: {
           type: 'redirect',
-          return_url: process.env.RETURN_URL || 'https://your-return-url.com',
+          return_url: returnUrl || 'https://your-return-url.com',
         },
         description,
         metadata: { userId, paymentId },
@@ -44,7 +44,7 @@ const createPayment = async ({ amount, description, paymentId, userId }) => {
     }
     return await response.json();
   } catch (error) {
-    console.error('Error creating payment:', error);
+    console.error('Error creating payment:', error.stack);
     throw error;
   }
 };
@@ -62,7 +62,7 @@ const checkPayment = async (paymentId) => {
     }
     return await response.json();
   } catch (error) {
-    console.error('Error checking payment:', error);
+    console.error('Error checking payment:', error.stack);
     throw error;
   }
 };
