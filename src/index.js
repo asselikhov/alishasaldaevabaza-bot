@@ -49,6 +49,7 @@ const Settings = mongoose.model('Settings', SettingsSchema);
 
 // Определение администраторов
 const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => String(id.trim()));
+console.log('Parsed adminIds:', adminIds);
 
 // Инициализация бота
 console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
@@ -91,24 +92,45 @@ async function getSettings() {
 }
 
 // Установка главного меню
-const setMainMenu = async (userId) => {
+const setMainMenu = async (ctx) => {
   try {
+    const userId = String(ctx.from.id);
     console.log(`Setting main menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
     const isAdmin = adminIds.includes(userId);
-    const commands = [];
-    const keyboard = isAdmin ? {
-      reply_markup: {
-        keyboard: [[{ text: '👑 Админ панель' }]],
-        resize_keyboard: true,
-        persistent: true,
-      },
-    } : {};
-    await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
+
+    if (isAdmin) {
+      const keyboard = {
+        reply_markup: {
+          keyboard: [[{ text: '👑 Админ панель' }]],
+          resize_keyboard: true,
+          persistent: true,
+        },
+      };
+      console.log(`Sending keyboard to user ${userId}:`, JSON.stringify(keyboard));
+      await ctx.reply('Главное меню:', keyboard);
+    } else {
+      await ctx.reply('Главное меню:', {
+        reply_markup: {
+          remove_keyboard: true,
+        },
+      });
+    }
     console.log(`Main menu set successfully for userId: ${userId}`);
   } catch (error) {
     console.error(`Error setting main menu for userId ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при установке меню.');
   }
 };
+
+// Команда для принудительного обновления меню администратора
+bot.command('adminmenu', async (ctx) => {
+  const userId = String(ctx.from.id);
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+  await setMainMenu(ctx);
+  await ctx.reply('Меню администратора обновлено.');
+});
 
 // Текст приветственного сообщения
 const getWelcomeMessage = () => {
@@ -124,8 +146,8 @@ const getWelcomeMessage = () => {
 // Обработчик команды /start
 bot.start(async (ctx) => {
   console.log(`Received /start command from ${ctx.from.id}`);
-  const userId = ctx.from.id.toString();
-  const chatId = ctx.chat.id.toString();
+  const userId = String(ctx.from.id);
+  const chatId = String(ctx.chat.id);
   const { first_name, username, phone_number } = ctx.from;
 
   try {
@@ -143,7 +165,7 @@ bot.start(async (ctx) => {
     } else {
       await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     }
-    await setMainMenu(userId);
+    await setMainMenu(ctx);
 
     const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
@@ -170,13 +192,14 @@ bot.start(async (ctx) => {
 
 // Обработчик кнопки "👑 Админ панель"
 bot.hears('👑 Админ панель', async (ctx) => {
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён. Эта функция только для администраторов.');
   }
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await setMainMenu(ctx); // Переустанавливаем меню
     await ctx.reply('Админ-панель:', {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -196,7 +219,7 @@ bot.hears('👑 Админ панель', async (ctx) => {
 // Обработчик кнопки "Редактировать"
 bot.action('edit', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
@@ -221,7 +244,7 @@ bot.action('edit', async (ctx) => {
 // Обработчик кнопки "О канале" (редактирование)
 bot.action('edit_channel', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
@@ -240,7 +263,7 @@ bot.action('edit_channel', async (ctx) => {
 // Обработчик кнопки "Техподдержка" (редактирование)
 bot.action('edit_support', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
@@ -258,7 +281,7 @@ bot.action('edit_support', async (ctx) => {
 
 // Обработчик текстового ввода для редактирования
 bot.on('text', async (ctx) => {
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   if (!adminIds.includes(userId) || !ctx.session?.editing) {
     return;
   }
@@ -301,7 +324,7 @@ bot.on('text', async (ctx) => {
 // Обработчик кнопки "Выгрузить подписчиков"
 bot.action('export_subscribers', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
@@ -368,7 +391,7 @@ bot.action('export_subscribers', async (ctx) => {
 // Обработчик кнопки "Статистика"
 bot.action('stats', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
@@ -405,8 +428,8 @@ bot.action('stats', async (ctx) => {
 // Обработчик кнопки "Купить"
 bot.action('buy', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
-  const chatId = ctx.chat.id.toString();
+  const userId = String(ctx.from.id);
+  const chatId = String(ctx.chat.id);
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
@@ -455,7 +478,7 @@ bot.action('buy', async (ctx) => {
 // Обработчик кнопки "О канале"
 bot.action('about', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     const settings = await getSettings();
@@ -474,7 +497,7 @@ bot.action('about', async (ctx) => {
         },
       });
     }
-  } catch (error) {
+  } maybe (error) {
     console.error(`Error in about for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
@@ -483,7 +506,7 @@ bot.action('about', async (ctx) => {
 // Обработчик кнопки "Назад"
 bot.action('back', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
+  const userId = String(ctx.from.id);
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     const settings = await getSettings();
@@ -500,8 +523,8 @@ bot.action('back', async (ctx) => {
           ],
         },
       });
-    } catch (editError) {
-      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
+    } catch (error) {
+      console.error(`Error editing message for user ${userId}:`, error);
       await ctx.replyWithMarkdown(getWelcomeMessage(), {
         reply_markup: {
           inline_keyboard: [
@@ -525,7 +548,7 @@ app.get('/', (req, res) => {
   res.send('Это API бота alishasaldaevabaza-bot. Используйте /health или /ping для проверки статуса или обратитесь к боту в Telegram.');
 });
 
-// Обработка возврата от ЮKassa
+// Обработка возврата от ЮКассы
 app.get('/return', async (req, res) => {
   console.log('Received /return request with query:', req.query);
   const { paymentId } = req.query;
