@@ -155,11 +155,13 @@ bot.on('message', async (ctx) => {
   const userId = ctx.from.id.toString();
   const chatId = ctx.chat.id.toString();
   const { first_name, username, phone_number } = ctx.from;
+  console.log('Received message from', userId, 'in chat', chatId);
 
   // Проверяем, существует ли пользователь в базе
   let user = await User.findOne({ userId });
   if (!user) {
     try {
+      console.log('Creating new user:', userId);
       user = await User.findOneAndUpdate(
           { userId },
           { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
@@ -189,6 +191,7 @@ bot.on('message', async (ctx) => {
       await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
     }
   } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
+    console.log('User', userId, 'is a paid subscriber');
     await setSupportMenu(userId);
     await ctx.replyWithMarkdown(
         `*Привет!* Я очень рада видеть тебя тут! 😊  
@@ -215,6 +218,7 @@ bot.on('message', async (ctx) => {
 
 // Обработка команды /start (для совместимости)
 bot.start(async (ctx) => {
+  console.log('Received /start command from', ctx.from.id);
   await bot.on('message')(ctx);
 });
 
