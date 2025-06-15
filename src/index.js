@@ -43,7 +43,7 @@ const User = mongoose.model('User', UserSchema);
 const SettingsSchema = new mongoose.Schema({
   channelDescription: { type: String, default: 'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊' },
   supportLink: { type: String, default: 'https://t.me/Eagleshot' },
-  welcomeMessage: { type: String, default: 'Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️\n\nПОЧЕМУ ЭТО ВЫГОДНО?\n\n- быстрая доставка\n- ооооочеень низкие цены\n- все заказы можно сделать через Вконтакte' },
+  welcomeMessage: { type: String, default: 'Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️\n\nПОЧЕМУ ЭТО ВЫГОДНО?\n\n- быстрая доставка\n- ооооочеень низкие цены\n- все заказы можно сделать через Вконтакте' },
 });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
@@ -355,6 +355,7 @@ bot.action('export_subscribers', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await ctx.reply('Начинаю выгрузку подписчиков. Это может занять время. Я уведомлю вас, когда файл будет готов.');
     const subscribers = await User.find({ paymentStatus: 'succeeded', joinedChannel: true });
 
     if (!subscribers.length) {
@@ -401,7 +402,6 @@ bot.action('export_subscribers', async (ctx) => {
 
     const buffer = await workbook.xlsx.write();
     const fileName = `Subscribers_${new Date().toISOString().slice(0, 10)}.xlsx`;
-
     await ctx.replyWithDocument(
         { source: buffer, filename: fileName },
         { caption: 'Список оплаченных подписчиков' }
@@ -413,6 +413,10 @@ bot.action('export_subscribers', async (ctx) => {
 });
 
 // Обработчик кнопки "Статистика"
+let cachedStats = null;
+let lastStatsUpdate = 0;
+const statsCacheTime = 60000; // 1 минута
+
 bot.action('stats', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
@@ -422,24 +426,30 @@ bot.action('stats', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    const totalUsers = await User.countDocuments();
-    const paidSubscribers = await User.countDocuments({ paymentStatus: 'succeeded', joinedChannel: true });
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recentVisitors = await User.find({ lastActivity: { $gte: oneDayAgo } }).select('userId firstName username');
+    const now = Date.now();
+    if (!cachedStats || now - lastStatsUpdate > statsCacheTime) {
+      const totalUsers = await User.countDocuments();
+      const paidSubscribers = await User.countDocuments({ paymentStatus: 'succeeded', joinedChannel: true });
+      const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+      const recentVisitors = await User.find({ lastActivity: { $gte: oneDayAgo } }).select('userId firstName username');
+
+      cachedStats = { totalUsers, paidSubscribers, recentVisitors };
+      lastStatsUpdate = now;
+    }
 
     let visitorsList = 'Список посетителей за последние 24 часа:\n';
-    if (recentVisitors.length === 0) {
+    if (cachedStats.recentVisitors.length === 0) {
       visitorsList += 'Нет активности за последние сутки';
     } else {
-      visitorsList += recentVisitors.map((visitor, index) =>
+      visitorsList += cachedStats.recentVisitors.map((visitor, index) =>
           `${index + 1}. ${visitor.firstName || 'Не указано'} (@${visitor.username || 'без username'}, ID: ${visitor.userId})`
       ).join('\n');
     }
 
     const statsMessage = `Статистика бота:\n` +
         `➖➖➖➖➖➖➖➖➖➖➖\n` +
-        `Пользователей: ${totalUsers}\n` +
-        `Подписчиков: ${paidSubscribers}\n` +
+        `Пользователей: ${cachedStats.totalUsers}\n` +
+        `Подписчиков: ${cachedStats.paidSubscribers}\n` +
         `${visitorsList}`;
 
     await ctx.editMessageText(statsMessage, {
@@ -482,13 +492,18 @@ bot.action('buy', async (ctx) => {
 
     const paymentId = uuidv4();
     console.log(`Creating payment for user ${userId}, paymentId: ${paymentId}`);
-    const payment = await createPayment({
-      amount: 399,
-      description: 'Доступ к закрытому Telegram каналу',
-      paymentId,
-      userId,
-      returnUrl: process.env.RETURN_URL,
-    });
+    const payment = await Promise.race([
+      createPayment({
+        amount: 399,
+        description: 'Доступ к закрытому Telegram каналу',
+        paymentId,
+        userId,
+        returnUrl: process.env.RETURN_URL,
+      }),
+      new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 5000)
+      )
+    ]);
 
     await User.findOneAndUpdate(
         { userId },
