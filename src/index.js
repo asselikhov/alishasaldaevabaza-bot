@@ -98,9 +98,6 @@ const setMainMenu = async (userId) => {
       },
     } : {};
     await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
-    if (isAdmin) {
-      await bot.telegram.sendMessage(userId, 'Главное меню обновлено с админ-панелью.', keyboard);
-    }
     console.log(`Main menu set successfully for userId: ${userId}`);
   } catch (error) {
     console.error(`Error setting main menu for userId ${userId}:`, error.stack);
