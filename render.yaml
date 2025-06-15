@@ -18,10 +18,14 @@ services:
         sync: false
       - key: CHANNEL_ID
         sync: false
-      - key: ADMIN_CHAT_ID
+      - key: ADMIN_CHAT_IDS
         sync: false
       - key: RENDER_URL
         sync: false
       - key: RETURN_URL
+        sync: false
+      - key: PORT
+        value: 10000
+      - key: PAYMENT_GROUP_ID
         sync: false
     healthCheckPath: /health
