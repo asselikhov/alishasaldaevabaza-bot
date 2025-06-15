@@ -1,4 +1,4 @@
-const { Telegraf } = require('telegraf');
+const { Telegraf, session } = require('telegraf');
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
@@ -39,12 +39,21 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', UserSchema);
 
+// Схема настроек
+const SettingsSchema = new mongoose.Schema({
+  channelDescription: { type: String, default: 'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊' },
+  supportLink: { type: String, default: 'https://t.me/Eagleshot' },
+});
+
+const Settings = mongoose.model('Settings', SettingsSchema);
+
 // Определение администраторов
 const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => String(id.trim()));
 
 // Инициализация бота
 console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
 const bot = new Telegraf(process.env.BOT_TOKEN);
+bot.use(session()); // Подключаем middleware для сессий
 bot.catch((err, ctx) => {
   console.error('Telegraf global error for update', ctx?.update, ':', err.stack);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
@@ -122,6 +131,7 @@ bot.start(async (ctx) => {
     }
     await setMainMenu(userId);
 
+    const settings = await Settings.findOne() || new Settings();
     console.log(`Sending reply to ${userId}`);
     await ctx.replyWithMarkdown(
         `Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️
@@ -136,7 +146,7 @@ bot.start(async (ctx) => {
             inline_keyboard: [
               [
                 { text: '🔥 Купить', callback_data: 'buy' },
-                { text: '💬 Техподдержка', url: 'https://t.me/Eagleshot' }
+                { text: '💬 Техподдержка', url: settings.supportLink },
               ],
               [{ text: '💡 О канале', callback_data: 'about' }],
             ],
@@ -163,7 +173,7 @@ bot.hears('👑 Админ панель', async (ctx) => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Редактировать о канале', callback_data: 'edit_about' }],
+          [{ text: 'Редактировать', callback_data: 'edit' }],
           [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
           [{ text: 'Статистика', callback_data: 'stats' }],
         ],
@@ -175,16 +185,108 @@ bot.hears('👑 Админ панель', async (ctx) => {
   }
 });
 
-// Обработчик кнопки "Редактировать о канале" (заглушка)
-bot.action('edit_about', async (ctx) => {
+// Обработчик кнопки "Редактировать"
+bot.action('edit', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = ctx.from.id.toString();
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    await ctx.reply('Функция редактирования информации о канале пока в разработке.');
+    await ctx.reply('Выберите, что редактировать:', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'О канале', callback_data: 'edit_channel' }],
+          [{ text: 'Техподдержка', callback_data: 'edit_support' }],
+        ],
+      },
+    });
   } catch (error) {
-    console.error(`Error in edit_about for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
+    console.error(`Error in edit for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при выборе редактирования.');
+  }
+});
+
+// Обработчик кнопки "О канале" (редактирование)
+bot.action('edit_channel', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id.toString();
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    ctx.session = ctx.session || {};
+    ctx.session.editing = 'channelDescription';
+    await ctx.reply('Введите новое описание канала:');
+  } catch (error) {
+    console.error(`Error in edit_channel for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при запросе описания канала.');
+  }
+});
+
+// Обработчик кнопки "Техподдержка" (редактирование)
+bot.action('edit_support', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id.toString();
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    ctx.session = ctx.session || {};
+    ctx.session.editing = 'supportLink';
+    await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
+  } catch (error) {
+    console.error(`Error in edit_support for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при запросе ссылки техподдержки.');
+  }
+});
+
+// Обработчик текстового ввода для редактирования
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  if (!adminIds.includes(userId) || !ctx.session?.editing) {
+    return;
+  }
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    const text = ctx.message.text.trim();
+    if (ctx.session.editing === 'channelDescription') {
+      if (text.length < 10) {
+        return ctx.reply('Описание должно быть не короче 10 символов. Попробуйте снова:');
+      }
+      await Settings.findOneAndUpdate(
+          {},
+          { channelDescription: text },
+          { upsert: true, new: true }
+      );
+      ctx.session.editing = null;
+      await ctx.reply('Описание канала обновлено!');
+    } else if (ctx.session.editing === 'supportLink') {
+      let supportLink = text;
+      if (supportLink.startsWith('@')) {
+        supportLink = `https://t.me/${supportLink.slice(1)}`;
+      } else if (!supportLink.startsWith('http://') && !supportLink.startsWith('https://')) {
+        return ctx.reply('Введите действительный URL или Telegram-username (например, @Username). Попробуйте снова:');
+      }
+      await Settings.findOneAndUpdate(
+          {},
+          { supportLink },
+          { upsert: true, new: true }
+      );
+      ctx.session.editing = null;
+      await ctx.reply('Ссылка на техподдержку обновлена!');
+    }
+  } catch (error) {
+    console.error(`Error processing text input for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при сохранении изменений. Попробуйте снова.');
   }
 });
 
@@ -272,19 +374,20 @@ bot.action('stats', async (ctx) => {
 
     let visitorsList = 'Список посетителей за последние 24 часа:\n';
     if (recentVisitors.length === 0) {
-      visitorsList += 'Нет активности за последние сутки.';
+      visitorsList += 'Нет активности за последние сутки';
     } else {
-      recentVisitors.forEach((visitor, index) => {
-        visitorsList += `${index + 1}. ${visitor.firstName || 'Не указано'} (@${visitor.username || 'без username'}, ID: ${visitor.userId})\n`;
-      });
+      visitorsList += recentVisitors.map((visitor, index) =>
+          `${index + 1}. ${visitor.firstName || 'Не указано'} (@${visitor.username || 'без username'}, ID: ${visitor.userId})`
+      ).join('\n');
     }
 
-    const statsMessage = `*Статистика бота:*\n\n` +
-        `1. Пользователей: ${totalUsers}\n` +
-        `2. Подписчиков: ${paidSubscribers}\n` +
-        `3. ${visitorsList}`;
+    const statsMessage = `Статистика бота:\n` +
+        `➖➖➖➖➖➖➖➖➖➖➖\n` +
+        `Пользователей: ${totalUsers}\n` +
+        `Подписчиков: ${paidSubscribers}\n` +
+        `${visitorsList}`;
 
-    await ctx.replyWithMarkdown(statsMessage);
+    await ctx.reply(statsMessage);
   } catch (error) {
     console.error(`Error in stats for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
@@ -347,9 +450,8 @@ bot.action('about', async (ctx) => {
   const userId = ctx.from.id.toString();
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    await ctx.replyWithMarkdown(
-        'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊'
-    );
+    const settings = await Settings.findOne() || new Settings();
+    await ctx.replyWithMarkdown(settings.channelDescription);
   } catch (error) {
     console.error(`Error in about for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
