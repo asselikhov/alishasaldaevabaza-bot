@@ -228,6 +228,7 @@ bot.action('edit', async (ctx) => {
         inline_keyboard: [
           [{ text: 'О канале', callback_data: 'edit_channel' }],
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
+          [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
           [{ text: 'Назад', callback_data: 'back' }],
         ],
       },
@@ -276,6 +277,25 @@ bot.action('edit_support', async (ctx) => {
   }
 });
 
+// Обработчик кнопки "Приветствие" (редактирование)
+bot.action('edit_welcome', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    ctx.session = ctx.session || {};
+    ctx.session.editing = 'welcomeMessage';
+    await ctx.reply('Введите новое приветственное сообщение:');
+  } catch (error) {
+    console.error(`Error in edit_welcome for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при запросе приветственного сообщения.');
+  }
+});
+
 // Обработчик текстового ввода для редактирования
 bot.on('text', async (ctx) => {
   const userId = String(ctx.from.id);
@@ -311,6 +331,19 @@ bot.on('text', async (ctx) => {
       );
       ctx.session.editing = null;
       await ctx.reply('Ссылка на техподдержку обновлена!');
+    } else if (ctx.session.editing === 'welcomeMessage') {
+      if (text.length < 10) {
+        return ctx.reply('Приветственное сообщение должно быть не короче 10 символов. Попробуйте снова:');
+      }
+      // Здесь предполагается, что приветственное сообщение будет храниться в новой переменной или настройке
+      // Для простоты будем хранить его в сессии или добавить в Settings
+      cachedSettings = await Settings.findOneAndUpdate(
+          {},
+          { welcomeMessage: text },
+          { upsert: true, new: true }
+      );
+      ctx.session.editing = null;
+      await ctx.reply('Приветственное сообщение обновлено!');
     }
   } catch (error) {
     console.error(`Error processing text input for user ${userId}:`, error.stack);
@@ -437,6 +470,7 @@ bot.action('buy', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_API_KEY: ${process.env.YOOKASSA_API_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
       const now = Math.floor(Date.now() / 1000);
@@ -453,6 +487,7 @@ bot.action('buy', async (ctx) => {
     }
 
     const paymentId = uuidv4();
+    console.log(`Creating payment for user ${userId}, paymentId: ${paymentId}`);
     const payment = await createPayment({
       amount: 399,
       description: 'Доступ к закрытому Telegram каналу',
@@ -474,7 +509,7 @@ bot.action('buy', async (ctx) => {
       },
     });
   } catch (error) {
-    console.error(`Payment error for user ${userId}:`, error.stack);
+    console.error(`Payment error for user ${userId}:`, error.message);
     await ctx.reply('Произошла ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
   }
 });
