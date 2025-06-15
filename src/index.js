@@ -93,8 +93,8 @@ async function getSettings() {
 
 // Установка главного меню
 const setMainMenu = async (ctx, silent = false) => {
+  const userId = String(ctx.from.id); // Определяем userId до try
   try {
-    const userId = String(ctx.from.id);
     console.log(`Setting main menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
     const isAdmin = adminIds.includes(userId);
 
