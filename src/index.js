@@ -111,11 +111,17 @@ const setMainMenu = async (ctx, silent = false) => {
         await ctx.reply('Главное меню:', keyboard);
       } else {
         await ctx.telegram.sendChatAction(ctx.chat.id, 'typing'); // Имитация активности
-        const tempMessage = await ctx.telegram.sendMessage(ctx.chat.id, '.', keyboard); // Отправляем точку
+        // Проверяем, есть ли последнее сообщение с клавиатурой
         try {
-          await ctx.telegram.deleteMessage(ctx.chat.id, tempMessage.message_id); // Пытаемся удалить
-        } catch (deleteError) {
-          console.warn(`Failed to delete temporary message for user ${userId}:`, deleteError.message);
+          await ctx.telegram.editMessageReplyMarkup(
+              ctx.chat.id,
+              ctx.message.message_id - 1,
+              undefined,
+              keyboard.reply_markup
+          );
+        } catch (editError) {
+          console.warn(`Failed to edit keyboard for user ${userId}, sending new:`, editError.message);
+          await ctx.reply('.', keyboard); // Отправляем минимальное сообщение
         }
       }
     } else {
@@ -126,15 +132,16 @@ const setMainMenu = async (ctx, silent = false) => {
           },
         });
       } else {
-        const tempMessage = await ctx.telegram.sendMessage(ctx.chat.id, '.', {
-          reply_markup: {
-            remove_keyboard: true,
-          },
-        });
         try {
-          await ctx.telegram.deleteMessage(ctx.chat.id, tempMessage.message_id);
-        } catch (deleteError) {
-          console.warn(`Failed to delete temporary message for user ${userId}:`, deleteError.message);
+          await ctx.telegram.editMessageReplyMarkup(
+              ctx.chat.id,
+              ctx.message.message_id - 1,
+              undefined,
+              { remove_keyboard: true }
+          );
+        } catch (editError) {
+          console.warn(`Failed to remove keyboard for user ${userId}:`, editError.message);
+          await ctx.reply('.', { reply_markup: { remove_keyboard: true } });
         }
       }
     }
@@ -468,7 +475,14 @@ bot.action('stats', async (ctx) => {
         `Подписчиков: ${paidSubscribers}\n` +
         `${visitorsList}`;
 
-    await ctx.reply(statsMessage);
+    await ctx.editMessageText(statsMessage, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Назад', callback_data: 'back_to_admin' }],
+        ],
+      },
+    });
   } catch (error) {
     console.error(`Error in stats for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
