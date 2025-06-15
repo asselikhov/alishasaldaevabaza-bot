@@ -113,15 +113,20 @@ const setMainMenu = async (ctx, silent = false) => {
         await ctx.telegram.sendChatAction(ctx.chat.id, 'typing'); // Имитация активности
         // Пытаемся обновить клавиатуру предыдущего сообщения
         try {
-          await ctx.telegram.editMessageReplyMarkup(
-              ctx.chat.id,
-              ctx.message ? ctx.message.message_id : (await ctx.getChat()).last_message?.message_id,
-              undefined,
-              keyboard.reply_markup
-          );
+          const lastMessageId = ctx.update.message ? ctx.update.message.message_id : (await ctx.getChat()).last_message?.message_id;
+          if (lastMessageId) {
+            await ctx.telegram.editMessageReplyMarkup(
+                ctx.chat.id,
+                lastMessageId,
+                undefined,
+                keyboard.reply_markup
+            );
+          } else {
+            console.warn(`No previous message found for user ${userId}, skipping keyboard update`);
+          }
         } catch (editError) {
-          console.warn(`Failed to edit keyboard for user ${userId}, sending new:`, editError.message);
-          await ctx.reply('', keyboard); // Отправляем пустое сообщение с клавиатурой
+          console.warn(`Failed to edit keyboard for user ${userId}:`, editError.message);
+          // Не отправляем новое сообщение, если редактирование не удалось
         }
       }
     } else {
@@ -133,15 +138,20 @@ const setMainMenu = async (ctx, silent = false) => {
         });
       } else {
         try {
-          await ctx.telegram.editMessageReplyMarkup(
-              ctx.chat.id,
-              ctx.message ? ctx.message.message_id : (await ctx.getChat()).last_message?.message_id,
-              undefined,
-              { remove_keyboard: true }
-          );
+          const lastMessageId = ctx.update.message ? ctx.update.message.message_id : (await ctx.getChat()).last_message?.message_id;
+          if (lastMessageId) {
+            await ctx.telegram.editMessageReplyMarkup(
+                ctx.chat.id,
+                lastMessageId,
+                undefined,
+                { remove_keyboard: true }
+            );
+          } else {
+            console.warn(`No previous message found for user ${userId}, skipping keyboard removal`);
+          }
         } catch (editError) {
           console.warn(`Failed to remove keyboard for user ${userId}:`, editError.message);
-          await ctx.reply('', { reply_markup: { remove_keyboard: true } });
+          // Не отправляем новое сообщение, если удаление не удалось
         }
       }
     }
