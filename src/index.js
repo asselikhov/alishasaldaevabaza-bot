@@ -75,7 +75,8 @@ const setMainMenu = async (userId) => {
   try {
     console.log(`Setting main menu for userId: ${userId}`);
     await delay(100);
-    const isAdmin = userId === process.env.ADMIN_CHAT_ID;
+    const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
+    const isAdmin = adminIds.includes(userId);
     const commands = [
       { command: 'buy', description: 'Оплатить доступ к каналу' },
       { command: 'check_payment', description: 'Проверить статус оплаты' },
@@ -96,7 +97,8 @@ const setSupportMenu = async (userId) => {
   try {
     console.log(`Setting support menu for userId: ${userId}`);
     await delay(100);
-    const isAdmin = userId === process.env.ADMIN_CHAT_ID;
+    const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
+    const isAdmin = adminIds.includes(userId);
     const commands = [
       { command: 'support', description: 'Связаться с поддержкой' },
       { command: 'renew_link', description: 'Обновить ссылку на канал' },
@@ -152,7 +154,7 @@ bot.start(async (ctx) => {
                 { text: '💬 Техподдержка', url: 'https://t.me/Eagleshot' }
               ],
               [{ text: '💡 О канале', callback_data: 'about' }],
-              ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
+              ...(adminIds.includes(userId) ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
             ],
           },
         }
@@ -205,7 +207,7 @@ bot.on('message', async (ctx) => {
                 { text: '💬 Техподдержка', url: 'https://t.me/Eagleshot' }
               ],
               [{ text: '💡 О канале', callback_data: 'about' }],
-              ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
+              ...(adminIds.includes(userId) ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
             ],
           },
         }
@@ -298,10 +300,13 @@ app.post('/webhook/yookassa', async (req, res) => {
               },
             }
         );
-        await bot.telegram.sendMessage(
-            process.env.ADMIN_CHAT_ID,
-            `Новый успешный платёж от user_${user.userId} (paymentId: ${object.id})`
-        );
+        const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
+        for (const adminId of adminIds) {
+          await bot.telegram.sendMessage(
+              adminId,
+              `Новый успешный платёж от user_${user.userId} (paymentId: ${object.id})`
+          );
+        }
         await setSupportMenu(user.userId);
       } catch (error) {
         console.error('Error processing webhook:', error.stack);
@@ -319,7 +324,8 @@ app.post('/webhook/yookassa', async (req, res) => {
 bot.action('admin', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = ctx.from.id.toString();
-  if (userId !== process.env.ADMIN_CHAT_ID) {
+  const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
+  if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён. Эта команда только для администратора.');
   }
 
@@ -484,7 +490,8 @@ bot.command('renew_link', async (ctx) => {
 // Обработка выгрузки подписчиков
 bot.action('export_subscribers', async (ctx) => {
   const userId = ctx.from.id.toString();
-  if (userId !== process.env.ADMIN_CHAT_ID) {
+  const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
+  if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
 
