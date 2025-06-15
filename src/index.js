@@ -43,6 +43,7 @@ const User = mongoose.model('User', UserSchema);
 const SettingsSchema = new mongoose.Schema({
   channelDescription: { type: String, default: 'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊' },
   supportLink: { type: String, default: 'https://t.me/Eagleshot' },
+  welcomeMessage: { type: String, default: 'Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️\n\nПОЧЕМУ ЭТО ВЫГОДНО?\n\n- быстрая доставка\n- ооооочеень низкие цены\n- все заказы можно сделать через Вконтакte' },
 });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
@@ -92,15 +93,10 @@ async function getSettings() {
 }
 
 // Текст приветственного сообщения
-const getWelcomeMessage = () => {
-  return `Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️
-
-ПОЧЕМУ ЭТО ВЫГОДНО?
-
-- быстрая доставка
-- ооооочеень низкие цены
-- все заказы можно сделать через Вконтакте`;
-};
+async function getWelcomeMessage() {
+  const settings = await getSettings();
+  return settings.welcomeMessage;
+}
 
 // Обработчик команды /start
 bot.start(async (ctx) => {
@@ -145,7 +141,7 @@ bot.start(async (ctx) => {
     } else {
       replyMarkup.reply_markup.inline_keyboard.push([{ text: '💡 О канале', callback_data: 'about' }]);
     }
-    await ctx.replyWithMarkdown(getWelcomeMessage(), replyMarkup);
+    await ctx.replyWithMarkdown(await getWelcomeMessage(), replyMarkup);
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
@@ -205,7 +201,7 @@ bot.action('back', async (ctx) => {
     } else {
       replyMarkup.reply_markup.inline_keyboard.push([{ text: '💡 О канале', callback_data: 'about' }]);
     }
-    await ctx.replyWithMarkdown(getWelcomeMessage(), replyMarkup);
+    await ctx.replyWithMarkdown(await getWelcomeMessage(), replyMarkup);
   } catch (error) {
     console.error(`Error in back for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
@@ -335,8 +331,6 @@ bot.on('text', async (ctx) => {
       if (text.length < 10) {
         return ctx.reply('Приветственное сообщение должно быть не короче 10 символов. Попробуйте снова:');
       }
-      // Здесь предполагается, что приветственное сообщение будет храниться в новой переменной или настройке
-      // Для простоты будем хранить его в сессии или добавить в Settings
       cachedSettings = await Settings.findOneAndUpdate(
           {},
           { welcomeMessage: text },
