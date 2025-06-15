@@ -38,6 +38,9 @@ const UserSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', UserSchema);
 
+// Определение администраторов
+const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
+
 // Инициализация бота
 console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -75,7 +78,6 @@ const setMainMenu = async (userId) => {
   try {
     console.log(`Setting main menu for userId: ${userId}`);
     await delay(100);
-    const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
     const isAdmin = adminIds.includes(userId);
     const commands = [
       { command: 'buy', description: 'Оплатить доступ к каналу' },
@@ -97,7 +99,6 @@ const setSupportMenu = async (userId) => {
   try {
     console.log(`Setting support menu for userId: ${userId}`);
     await delay(100);
-    const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
     const isAdmin = adminIds.includes(userId);
     const commands = [
       { command: 'support', description: 'Связаться с поддержкой' },
@@ -198,7 +199,7 @@ bot.on('message', async (ctx) => {
 
 - быстрая доставка
 - ооооочеень низкие цены
-- все заказы можно сделать через Вконтакте`,
+- все заказы можно сделать через Вконтакte`,
         {
           reply_markup: {
             inline_keyboard: [
@@ -300,7 +301,6 @@ app.post('/webhook/yookassa', async (req, res) => {
               },
             }
         );
-        const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
         for (const adminId of adminIds) {
           await bot.telegram.sendMessage(
               adminId,
@@ -324,7 +324,6 @@ app.post('/webhook/yookassa', async (req, res) => {
 bot.action('admin', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = ctx.from.id.toString();
-  const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён. Эта команда только для администратора.');
   }
@@ -490,7 +489,6 @@ bot.command('renew_link', async (ctx) => {
 // Обработка выгрузки подписчиков
 bot.action('export_subscribers', async (ctx) => {
   const userId = ctx.from.id.toString();
-  const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
