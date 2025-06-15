@@ -111,8 +111,12 @@ const setMainMenu = async (ctx, silent = false) => {
         await ctx.reply('Главное меню:', keyboard);
       } else {
         await ctx.telegram.sendChatAction(ctx.chat.id, 'typing'); // Имитация активности
-        await ctx.telegram.sendMessage(ctx.chat.id, '.', keyboard); // Отправляем точку, чтобы обновить клавиатуру
-        await ctx.deleteMessage(ctx.chat.id, ctx.message.message_id + 1); // Удаляем сообщение с точкой
+        const tempMessage = await ctx.telegram.sendMessage(ctx.chat.id, '.', keyboard); // Отправляем точку
+        try {
+          await ctx.telegram.deleteMessage(ctx.chat.id, tempMessage.message_id); // Пытаемся удалить
+        } catch (deleteError) {
+          console.warn(`Failed to delete temporary message for user ${userId}:`, deleteError.message);
+        }
       }
     } else {
       if (!silent) {
@@ -122,12 +126,16 @@ const setMainMenu = async (ctx, silent = false) => {
           },
         });
       } else {
-        await ctx.telegram.sendMessage(ctx.chat.id, '.', {
+        const tempMessage = await ctx.telegram.sendMessage(ctx.chat.id, '.', {
           reply_markup: {
             remove_keyboard: true,
           },
         });
-        await ctx.deleteMessage(ctx.chat.id, ctx.message.message_id + 1);
+        try {
+          await ctx.telegram.deleteMessage(ctx.chat.id, tempMessage.message_id);
+        } catch (deleteError) {
+          console.warn(`Failed to delete temporary message for user ${userId}:`, deleteError.message);
+        }
       }
     }
     console.log(`Main menu set successfully for userId: ${userId}`);
@@ -231,6 +239,32 @@ bot.hears('👑 Админ панель', async (ctx) => {
   }
 });
 
+// Обработчик кнопки "Назад" в админ-панели
+bot.action('back_to_admin', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await ctx.editMessageText('Админ панель:\n➖➖➖➖➖➖➖➖➖➖➖', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Редактировать', callback_data: 'edit' }],
+          [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
+          [{ text: 'Статистика', callback_data: 'stats' }],
+        ],
+      },
+    });
+  } catch (error) {
+    console.error(`Error in back_to_admin for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при возврате в админ-панель.');
+  }
+});
+
 // Обработчик кнопки "Редактировать"
 bot.action('edit', async (ctx) => {
   await ctx.answerCbQuery();
@@ -241,12 +275,13 @@ bot.action('edit', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    await ctx.reply('Выберите, что редактировать:', {
+    await ctx.editMessageText('Выберите, что редактировать:', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
           [{ text: 'О канале', callback_data: 'edit_channel' }],
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
+          [{ text: 'Назад', callback_data: 'back_to_admin' }],
         ],
       },
     });
