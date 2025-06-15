@@ -107,6 +107,17 @@ const setMainMenu = async (userId) => {
   }
 };
 
+// Текст приветственного сообщения
+const getWelcomeMessage = () => {
+  return `Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️
+
+ПОЧЕМУ ЭТО ВЫГОДНО?
+
+- быстрая доставка
+- ооооочеень низкие цены
+- все заказы можно сделать через Вконтакте`;
+};
+
 // Обработчик команды /start
 bot.start(async (ctx) => {
   console.log(`Received /start command from ${ctx.from.id}`);
@@ -134,13 +145,7 @@ bot.start(async (ctx) => {
     const settings = await Settings.findOne() || new Settings();
     console.log(`Sending reply to ${userId}`);
     await ctx.replyWithMarkdown(
-        `Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️
-
-ПОЧЕМУ ЭТО ВЫГОДНО?
-
-- быстрая доставка
-- ооооочеень низкие цены
-- все заказы можно сделать через Вконтакте`,
+        getWelcomeMessage(),
         {
           reply_markup: {
             inline_keyboard: [
@@ -451,9 +456,63 @@ bot.action('about', async (ctx) => {
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     const settings = await Settings.findOne() || new Settings();
-    await ctx.replyWithMarkdown(settings.channelDescription);
+    try {
+      await ctx.editMessageText(settings.channelDescription, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Назад', callback_data: 'back' }]],
+        },
+      });
+    } catch (editError) {
+      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
+      await ctx.replyWithMarkdown(settings.channelDescription, {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Назад', callback_data: 'back' }]],
+        },
+      });
+    }
   } catch (error) {
     console.error(`Error in about for user ${userId}:`, error.stack);
+    await ctx.reply('Произошла ошибка. Попробуйте позже.');
+  }
+});
+
+// Обработчик кнопки "Назад"
+bot.action('back', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id.toString();
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    const settings = await Settings.findOne() || new Settings();
+    try {
+      await ctx.editMessageText(getWelcomeMessage(), {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🔥 Купить', callback_data: 'buy' },
+              { text: '💬 Техподдержка', url: settings.supportLink },
+            ],
+            [{ text: '💡 О канале', callback_data: 'about' }],
+          ],
+        },
+      });
+    } catch (editError) {
+      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
+      await ctx.replyWithMarkdown(getWelcomeMessage(), {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🔥 Купить', callback_data: 'buy' },
+              { text: '💬 Техподдержка', url: settings.supportLink },
+            ],
+            [{ text: '💡 О канале', callback_data: 'about' }],
+          ],
+        },
+      });
+    }
+  } catch (error) {
+    console.error(`Error in back for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
