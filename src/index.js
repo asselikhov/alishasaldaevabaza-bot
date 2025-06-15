@@ -122,11 +122,12 @@ const setMainMenu = async (ctx, silent = false) => {
                 keyboard.reply_markup
             );
           } else {
-            console.warn(`No previous message found for user ${userId}, skipping keyboard update`);
+            console.warn(`No previous message found for user ${userId}, sending new keyboard`);
+            await ctx.reply('', keyboard); // Отправляем новую клавиатуру, если нет сообщения
           }
         } catch (editError) {
           console.warn(`Failed to edit keyboard for user ${userId}:`, editError.message);
-          // Не отправляем новое сообщение, если редактирование не удалось
+          await ctx.reply('', keyboard); // Отправляем новую клавиатуру при ошибке
         }
       }
     } else {
