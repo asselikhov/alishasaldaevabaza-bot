@@ -28,6 +28,7 @@ const UserSchema = new mongoose.Schema({
   username: String,
   phoneNumber: String,
   paymentDate: Date,
+  paymentDocument: { type: String, default: null }, // Изменено на String для хранения ссылки
 });
 
 const User = mongoose.model('User', UserSchema);
@@ -79,6 +80,26 @@ app.post('/webhook/yookassa', async (req, res) => {
               expire_date: expireDate,
             }
         );
+
+        // Создание текстового документа с данными платежа
+        const paymentText = `Платежный документ\n` +
+            `ID транзакции: ${object.id}\n` +
+            `Сумма: ${object.amount.value} ${object.amount.currency}\n` +
+            `Дата: ${new Date(object.created_at).toLocaleString('ru-RU')}\n` +
+            `Статус: ${object.status}\n` +
+            `Пользователь: ${user.userId}`;
+        const paymentDoc = await bot.telegram.sendDocument(
+            process.env.PAYMENT_GROUP_ID,
+            {
+              source: Buffer.from(paymentText),
+              filename: `payment_${object.id}.txt`,
+            },
+            {
+              caption: `Документ оплаты для user_${user.userId}`,
+            }
+        );
+        const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.split('-100')[1]}/${paymentDoc.message_id}`; // Ссылка на сообщение
+
         await User.findOneAndUpdate(
             { userId: user.userId, paymentId: object.id },
             {
@@ -87,6 +108,7 @@ app.post('/webhook/yookassa', async (req, res) => {
               inviteLink: chatInvite.invite_link,
               inviteLinkExpires: expireDate,
               paymentDate: new Date(),
+              paymentDocument, // Сохранение ссылки на документ
             },
             { new: true }
         );
@@ -370,6 +392,7 @@ bot.action('export_subscribers', async (ctx) => {
       { header: 'Telegram-имя', key: 'username', width: 20 },
       { header: 'Телефон', key: 'phoneNumber', width: 15 },
       { header: 'Дата оплаты', key: 'paymentDate', width: 20 },
+      { header: 'Платежный документ', key: 'paymentDocument', width: 30 }, // Обновлённый столбец
     ];
 
     // Форматирование заголовков
@@ -389,6 +412,7 @@ bot.action('export_subscribers', async (ctx) => {
         username: sub.username ? `@${sub.username}` : 'Не указано',
         phoneNumber: sub.phoneNumber || 'Не указано',
         paymentDate: sub.paymentDate ? sub.paymentDate.toLocaleString('ru-RU') : 'Не указано',
+        paymentDocument: sub.paymentDocument || 'Не указано',
       });
     });
 
