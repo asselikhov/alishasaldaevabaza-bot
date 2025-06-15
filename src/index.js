@@ -221,10 +221,48 @@ bot.on('message', async (ctx) => {
   }
 });
 
-// Обработка команды /start (для совместимости)
+// Обработка команды /start
 bot.start(async (ctx) => {
   console.log('Received /start command from', ctx.from.id);
-  await bot.on('message')(ctx);
+  const userId = ctx.from.id.toString();
+  const chatId = ctx.chat.id.toString();
+  const { first_name, username, phone_number } = ctx.from;
+
+  try {
+    let user = await User.findOne({ userId });
+    if (!user) {
+      console.log('Creating new user:', userId);
+      user = await User.findOneAndUpdate(
+          { userId },
+          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
+          { upsert: true, new: true }
+      );
+      await setMainMenu(userId);
+    } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
+      await setSupportMenu(userId);
+    }
+
+    await ctx.replyWithMarkdown(
+        `*Привет!* Я очень рада видеть тебя тут! 😊  
+Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
+Давай экономить вместе ❤️
+
+**Почему это выгодно?**
+- 🚚 *Быстрая доставка*
+- 💸 *Ооооочеень низкие цены*
+- 📱 *Все заказы можно сделать через Вконтакте*`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
+            ],
+          },
+        }
+    );
+  } catch (error) {
+    console.error('Error in /start:', error);
+    await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
+  }
 });
 
 // Обработка нажатий на кнопки
