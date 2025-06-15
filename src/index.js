@@ -91,88 +91,6 @@ async function getSettings() {
   return cachedSettings;
 }
 
-// Установка главного меню
-const setMainMenu = async (ctx, silent = false) => {
-  const userId = String(ctx.from.id); // Определяем userId до try
-  try {
-    console.log(`Setting main menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
-    const isAdmin = adminIds.includes(userId);
-
-    if (isAdmin) {
-      const keyboard = {
-        reply_markup: {
-          keyboard: [[{ text: '👑 Админ панель' }]],
-          resize_keyboard: true,
-          persistent: true,
-        },
-      };
-      console.log(`Sending keyboard to user ${userId}:`, JSON.stringify(keyboard));
-      if (!silent) {
-        await ctx.reply('Главное меню:', keyboard);
-      } else {
-        await ctx.telegram.sendChatAction(ctx.chat.id, 'typing'); // Имитация активности
-        // Пытаемся обновить клавиатуру предыдущего сообщения
-        try {
-          const lastMessageId = ctx.update.message ? ctx.update.message.message_id : (await ctx.getChat()).last_message?.message_id;
-          if (lastMessageId) {
-            await ctx.telegram.editMessageReplyMarkup(
-                ctx.chat.id,
-                lastMessageId,
-                undefined,
-                keyboard.reply_markup
-            );
-          } else {
-            console.warn(`No previous message found for user ${userId}, sending new keyboard`);
-            await ctx.reply('', keyboard); // Отправляем новую клавиатуру, если нет сообщения
-          }
-        } catch (editError) {
-          console.warn(`Failed to edit keyboard for user ${userId}:`, editError.message);
-          await ctx.reply('', keyboard); // Отправляем новую клавиатуру при ошибке
-        }
-      }
-    } else {
-      if (!silent) {
-        await ctx.reply('Главное меню:', {
-          reply_markup: {
-            remove_keyboard: true,
-          },
-        });
-      } else {
-        try {
-          const lastMessageId = ctx.update.message ? ctx.update.message.message_id : (await ctx.getChat()).last_message?.message_id;
-          if (lastMessageId) {
-            await ctx.telegram.editMessageReplyMarkup(
-                ctx.chat.id,
-                lastMessageId,
-                undefined,
-                { remove_keyboard: true }
-            );
-          } else {
-            console.warn(`No previous message found for user ${userId}, skipping keyboard removal`);
-          }
-        } catch (editError) {
-          console.warn(`Failed to remove keyboard for user ${userId}:`, editError.message);
-          // Не отправляем новое сообщение, если удаление не удалось
-        }
-      }
-    }
-    console.log(`Main menu set successfully for userId: ${userId}`);
-  } catch (error) {
-    console.error(`Error setting main menu for userId ${userId}:`, error.stack);
-    if (!silent) await ctx.reply('Ошибка при установке меню.');
-  }
-};
-
-// Команда для принудительного обновления меню администратора
-bot.command('adminmenu', async (ctx) => {
-  const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
-    return ctx.reply('Доступ запрещён.');
-  }
-  await setMainMenu(ctx);
-  await ctx.reply('Меню администратора обновлено.');
-});
-
 // Текст приветственного сообщения
 const getWelcomeMessage = () => {
   return `Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️
@@ -206,24 +124,28 @@ bot.start(async (ctx) => {
     } else {
       await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     }
-    await setMainMenu(ctx, true); // Убираем "Главное меню:"
 
     const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
-    await ctx.replyWithMarkdown(
-        getWelcomeMessage(),
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '🔥 Купить', callback_data: 'buy' },
-                { text: '💬 Техподдержка', url: settings.supportLink },
-              ],
-              [{ text: '💡 О канале', callback_data: 'about' }],
-            ],
-          },
-        }
-    );
+    let replyMarkup = {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🔥 Купить', callback_data: 'buy' },
+            { text: '💬 Техподдержка', url: settings.supportLink },
+          ],
+        ],
+      },
+    };
+    if (adminIds.includes(userId)) {
+      replyMarkup.reply_markup.inline_keyboard.push([
+        { text: '👑 Админ панель', callback_data: 'admin_panel' },
+        { text: '💡 О канале', callback_data: 'about' },
+      ]);
+    } else {
+      replyMarkup.reply_markup.inline_keyboard.push([{ text: '💡 О канале', callback_data: 'about' }]);
+    }
+    await ctx.replyWithMarkdown(getWelcomeMessage(), replyMarkup);
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
@@ -232,15 +154,15 @@ bot.start(async (ctx) => {
 });
 
 // Обработчик кнопки "👑 Админ панель"
-bot.hears('👑 Админ панель', async (ctx) => {
+bot.action('admin_panel', async (ctx) => {
+  await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
   if (!adminIds.includes(userId)) {
-    return ctx.reply('Доступ запрещён. Эта функция только для администраторов.');
+    return ctx.reply('Доступ запрещён.');
   }
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    await setMainMenu(ctx, true); // Устанавливаем меню без сообщения
     await ctx.reply('Админ панель:\n➖➖➖➖➖➖➖➖➖➖➖', {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -594,10 +516,27 @@ bot.action('back', async (ctx) => {
               { text: '🔥 Купить', callback_data: 'buy' },
               { text: '💬 Техподдержка', url: settings.supportLink },
             ],
-            [{ text: '💡 О канале', callback_data: 'about' }],
           ],
         },
       });
+      if (adminIds.includes(userId)) {
+        await ctx.replyWithMarkdown('', {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '👑 Админ панель', callback_data: 'admin_panel' },
+                { text: '💡 О канале', callback_data: 'about' },
+              ],
+            ],
+          },
+        });
+      } else {
+        await ctx.replyWithMarkdown('', {
+          reply_markup: {
+            inline_keyboard: [[{ text: '💡 О канале', callback_data: 'about' }]],
+          },
+        });
+      }
     } catch (editError) {
       console.warn(`Failed to edit message for user ${userId}:`, editError.message);
       await ctx.replyWithMarkdown(getWelcomeMessage(), {
@@ -607,10 +546,27 @@ bot.action('back', async (ctx) => {
               { text: '🔥 Купить', callback_data: 'buy' },
               { text: '💬 Техподдержка', url: settings.supportLink },
             ],
-            [{ text: '💡 О канале', callback_data: 'about' }],
           ],
         },
       });
+      if (adminIds.includes(userId)) {
+        await ctx.replyWithMarkdown('', {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '👑 Админ панель', callback_data: 'admin_panel' },
+                { text: '💡 О канале', callback_data: 'about' },
+              ],
+            ],
+          },
+        });
+      } else {
+        await ctx.replyWithMarkdown('', {
+          reply_markup: {
+            inline_keyboard: [[{ text: '💡 О канале', callback_data: 'about' }]],
+          },
+        });
+      }
     }
   } catch (error) {
     console.error(`Error in back for user ${userId}:`, error.stack);
@@ -721,25 +677,6 @@ app.post('/webhook/yookassa', async (req, res) => {
 // Запуск сервера
 const PORT = process.env.PORT || 3000;
 console.log(`Starting server on port ${PORT}`);
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  try {
-    console.log('Setting webhook');
-    await bot.telegram.setWebhook(`https://${process.env.RENDER_URL}/bot${process.env.BOT_TOKEN}`);
-    console.log('Webhook set successfully');
-    const webhookInfo = await bot.telegram.getWebhookInfo();
-    console.log('Webhook info:', JSON.stringify(webhookInfo));
-  } catch (error) {
-    console.error('Failed to set webhook:', error.stack);
-  }
-});
-
-// Обработка остановки
-process.once('SIGINT', () => {
-  console.log('SIGINT received, stopping bot');
-  bot.stop('SIGINT');
-});
-process.once('SIGTERM', () => {
-  console.log('SIGTERM received, stopping bot');
-  bot.stop('SIGTERM');
 });
