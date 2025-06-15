@@ -41,7 +41,7 @@ const User = mongoose.model('User', UserSchema);
 // Инициализация бота
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.catch((err, ctx) => {
-  console.error('Telegraf error:', err);
+  console.error('Telegraf error for update', ctx.update, ':', err);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
 
@@ -217,6 +217,7 @@ bot.start(async (ctx) => {
   const { first_name, username, phone_number } = ctx.from;
 
   try {
+    console.log('Processing /start for userId:', userId);
     let user = await User.findOne({ userId });
     console.log('User found or to be created:', user ? 'exists' : 'new');
     if (!user) {
@@ -231,6 +232,7 @@ bot.start(async (ctx) => {
       await setSupportMenu(userId);
     }
 
+    console.log('Sending reply to', userId);
     await ctx.replyWithMarkdown(
         `*Привет!* Я очень рада видеть тебя тут! 😊  
 Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
@@ -248,8 +250,9 @@ bot.start(async (ctx) => {
           },
         }
     );
+    console.log('Reply sent to', userId);
   } catch (error) {
-    console.error('Error in /start:', error);
+    console.error('Error in /start for user', userId, ':', error);
     await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
   }
 });
@@ -385,34 +388,35 @@ bot.command('renew_link', async (ctx) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
-        },
-      });
-    }
-    const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
-    const chatInvite = await ctx.telegram.createChatInviteLink(
-        process.env.CHANNEL_ID,
-        {
-          name: `Invite for user_${userId}`,
-          member_limit: 1,
-          creates_join_request: false,
-          expire_date: expireDate,
         }
-    );
-    await User.findOneAndUpdate(
-        { userId },
-        { inviteLink: chatInvite.invite_link, inviteLinkExpires: expireDate },
-        { new: true }
-    );
-    return ctx.reply('Ваша новая ссылка сгенерирована (действует 24 часа):', {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
       },
     });
-  } catch (error) {
-    console.error('Error in /renew_link:', error);
-    await ctx.reply('Ошибка при обновлении ссылки. Свяжитесь с поддержкой.');
   }
+  const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+  const chatInvite = await ctx.telegram.createChatInviteLink(
+      process.env.CHANNEL_ID,
+      {
+        name: `Invite for user_${userId}`,
+        member_limit: 1,
+        creates_join_request: false,
+        expire_date: expireDate,
+      }
+  );
+  await User.findOneAndUpdate(
+      { userId },
+      { inviteLink: chatInvite.invite_link, inviteLinkExpires: expireDate },
+      { new: true }
+  );
+  return ctx.reply('Ваша новая ссылка сгенерирована (действует 24 часа):', {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
+    },
+  });
+} catch (error) {
+  console.error('Error in /renew_link:', error);
+  await ctx.reply('Ошибка при обновлении ссылки. Свяжитесь с поддержкой.');
+}
 });
 
 // Обработка выгрузки подписчиков
