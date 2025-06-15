@@ -497,7 +497,7 @@ bot.action('about', async (ctx) => {
         },
       });
     }
-  } maybe (error) {
+  } catch (error) {
     console.error(`Error in about for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
@@ -523,8 +523,8 @@ bot.action('back', async (ctx) => {
           ],
         },
       });
-    } catch (error) {
-      console.error(`Error editing message for user ${userId}:`, error);
+    } catch (editError) {
+      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
       await ctx.replyWithMarkdown(getWelcomeMessage(), {
         reply_markup: {
           inline_keyboard: [
@@ -548,7 +548,7 @@ app.get('/', (req, res) => {
   res.send('Это API бота alishasaldaevabaza-bot. Используйте /health или /ping для проверки статуса или обратитесь к боту в Telegram.');
 });
 
-// Обработка возврата от ЮКассы
+// Обработка возврата от ЮKassa
 app.get('/return', async (req, res) => {
   console.log('Received /return request with query:', req.query);
   const { paymentId } = req.query;
