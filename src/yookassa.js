@@ -6,6 +6,7 @@ const SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
 const createPayment = async ({ amount, description, paymentId, userId, returnUrl }) => {
   try {
+    console.log(`Creating payment for user ${userId}, paymentId: ${paymentId}`);
     const response = await fetch('https://api.yookassa.ru/v3/payments', {
       method: 'POST',
       headers: {
@@ -42,15 +43,18 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
     if (!response.ok) {
       throw new Error(`Yookassa API error: ${response.statusText}`);
     }
-    return await response.json();
+    const result = await response.json();
+    console.log(`Payment created for user ${userId}: ${JSON.stringify(result)}`);
+    return result;
   } catch (error) {
-    console.error('Error creating payment:', error.stack);
+    console.error(`Error creating payment for user ${userId}:`, error.stack);
     throw error;
   }
 };
 
 const checkPayment = async (paymentId) => {
   try {
+    console.log(`Checking payment with paymentId: ${paymentId}`);
     const response = await fetch(`https://api.yookassa.ru/v3/payments/${paymentId}`, {
       headers: {
         'Authorization': `Basic ${Buffer.from(`${SHOP_ID}:${SECRET_KEY}`).toString('base64')}`,
@@ -60,9 +64,11 @@ const checkPayment = async (paymentId) => {
     if (!response.ok) {
       throw new Error(`Yookassa API error: ${response.statusText}`);
     }
-    return await response.json();
+    const result = await response.json();
+    console.log(`Payment check result for paymentId ${paymentId}: ${JSON.stringify(result)}`);
+    return result;
   } catch (error) {
-    console.error('Error checking payment:', error.stack);
+    console.error(`Error checking payment with paymentId ${paymentId}:`, error.stack);
     throw error;
   }
 };

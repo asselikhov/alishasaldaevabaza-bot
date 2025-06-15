@@ -10,7 +10,7 @@ app.use(express.json());
 
 // Логирование всех запросов
 app.use((req, res, next) => {
-  console.log(`Received ${req.method} request at ${req.path}`);
+  console.log(`[${new Date().toISOString()}] Received ${req.method} request at ${req.path}`);
   if (req.body) console.log('Request body:', JSON.stringify(req.body));
   next();
 });
@@ -18,7 +18,7 @@ app.use((req, res, next) => {
 // Подключение к MongoDB
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+    .catch(err => console.error('MongoDB connection error:', err.stack));
 
 // Схема пользователя
 const UserSchema = new mongoose.Schema({
@@ -39,9 +39,10 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 // Инициализация бота
+console.log('Initializing Telegraf bot');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.catch((err, ctx) => {
-  console.error('Telegraf error for update', ctx?.update, ':', err);
+  console.error('Telegraf global error for update', ctx?.update, ':', err.stack);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
 
@@ -54,7 +55,8 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // Установка команд главного меню
 const setMainMenu = async (userId) => {
   try {
-    await delay(100); // Задержка для избежания лимитов
+    console.log(`Setting main menu for userId: ${userId}`);
+    await delay(100);
     const isAdmin = userId === process.env.ADMIN_CHAT_ID;
     const commands = [
       { command: 'buy', description: 'Оплатить доступ к каналу' },
@@ -65,16 +67,17 @@ const setMainMenu = async (userId) => {
       commands.push({ command: 'admin', description: 'Админ панель' });
     }
     await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
-    console.log('Main menu set for userId:', userId);
+    console.log(`Main menu set successfully for userId: ${userId}`);
   } catch (error) {
-    console.error('Error setting main menu for userId', userId, ':', error.stack);
+    console.error(`Error setting main menu for userId ${userId}:`, error.stack);
   }
 };
 
 // Установка меню поддержки
 const setSupportMenu = async (userId) => {
   try {
-    await delay(100); // Задержка для избежания лимитов
+    console.log(`Setting support menu for userId: ${userId}`);
+    await delay(100);
     const isAdmin = userId === process.env.ADMIN_CHAT_ID;
     const commands = [
       { command: 'support', description: 'Связаться с поддержкой' },
@@ -84,37 +87,37 @@ const setSupportMenu = async (userId) => {
       commands.push({ command: 'admin', description: 'Админ панель' });
     }
     await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
-    console.log('Support menu set for userId:', userId);
+    console.log(`Support menu set successfully for userId: ${userId}`);
   } catch (error) {
-    console.error('Error setting support menu for userId', userId, ':', error.stack);
+    console.error(`Error setting support menu for userId ${userId}:`, error.stack);
   }
 };
 
 // Обработчик команды /start
 bot.start(async (ctx) => {
-  console.log('Received /start command from', ctx.from.id);
+  console.log(`Received /start command from ${ctx.from.id}`);
   const userId = ctx.from.id.toString();
   const chatId = ctx.chat.id.toString();
   const { first_name, username, phone_number } = ctx.from;
 
   try {
-    console.log('Processing /start for userId:', userId);
+    console.log(`Processing /start for userId: ${userId}`);
     let user = await User.findOne({ userId });
-    console.log('User found or to be created:', user ? 'exists' : 'new');
+    console.log(`User found or to be created: ${user ? 'exists' : 'new'}`);
     if (!user) {
-      console.log('Creating new user:', userId);
+      console.log(`Creating new user: ${userId}`);
       user = await User.findOneAndUpdate(
           { userId },
           { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
           { upsert: true, new: true }
       );
-      console.log('User created:', user);
+      console.log(`User created: ${JSON.stringify(user)}`);
       await setMainMenu(userId);
     } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
       await setSupportMenu(userId);
     }
 
-    console.log('Sending reply to', userId);
+    console.log(`Sending reply to ${userId}`);
     await ctx.replyWithMarkdown(
         `*Привет!* Я очень рада видеть тебя тут! 😊  
       Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
@@ -134,38 +137,38 @@ bot.start(async (ctx) => {
           },
         }
     );
-    console.log('Reply sent to', userId);
+    console.log(`Reply sent to ${userId}`);
   } catch (error) {
-    console.error('Error in /start for user', userId, ':', error.stack);
+    console.error(`Error in /start for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
   }
 });
 
-// Обработчик сообщений (после /start)
+// Обработчик сообщений
 bot.on('message', async (ctx) => {
   const userId = ctx.from.id.toString();
   const chatId = ctx.chat.id.toString();
   const { first_name, username, phone_number } = ctx.from;
-  console.log('Received message from', userId, 'in chat', chatId, 'text:', ctx.message?.text);
+  console.log(`Received message from ${userId} in chat ${chatId}, text: ${ctx.message?.text}`);
 
   try {
     let user = await User.findOne({ userId });
-    console.log('User found or to be created:', user ? 'exists' : 'new');
+    console.log(`User found or to be created: ${user ? 'exists' : 'new'}`);
     if (!user) {
-      console.log('Creating new user:', userId);
+      console.log(`Creating new user: ${userId}`);
       user = await User.findOneAndUpdate(
           { userId },
           { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
           { upsert: true, new: true }
       );
-      console.log('User created:', user);
+      console.log(`User created: ${JSON.stringify(user)}`);
       await setMainMenu(userId);
     } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
-      console.log('User', userId, 'is a paid subscriber');
+      console.log(`User ${userId} is a paid subscriber`);
       await setSupportMenu(userId);
     }
 
-    console.log('Sending reply to', userId);
+    console.log(`Sending reply to ${userId}`);
     await ctx.replyWithMarkdown(
         `*Привет!* Я очень рада видеть тебя тут! 😊  
       Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
@@ -185,9 +188,9 @@ bot.on('message', async (ctx) => {
           },
         }
     );
-    console.log('Reply sent to', userId);
+    console.log(`Reply sent to ${userId}`);
   } catch (error) {
-    console.error('Error in message handler for user', userId, ':', error.stack);
+    console.error(`Error in message handler for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
   }
 });
@@ -277,7 +280,7 @@ app.post('/webhook/yookassa', async (req, res) => {
             process.env.ADMIN_CHAT_ID,
             `Новый успешный платёж от user_${user.userId} (paymentId: ${object.id})`
         );
-        await setSupportMenu(userId);
+        await setSupportMenu(user.userId);
       } catch (error) {
         console.error('Error processing webhook:', error.stack);
         await bot.telegram.sendMessage(
@@ -306,7 +309,7 @@ bot.action('admin', async (ctx) => {
       },
     });
   } catch (error) {
-    console.error('Error in /admin:', error.stack);
+    console.error(`Error in /admin for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при открытии админ-панели.');
   }
 });
@@ -318,7 +321,7 @@ bot.action('support', async (ctx) => {
         'Если у вас возникли вопросы или проблемы, напишите в техническую поддержку: @YourSupportUsername или свяжитесь через [почту](mailto:support@example.com).'
     );
   } catch (error) {
-    console.error('Error in /support:', error.stack);
+    console.error(`Error in /support for user ${ctx.from.id}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
@@ -330,7 +333,7 @@ bot.action('about', async (ctx) => {
         'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊'
     );
   } catch (error) {
-    console.error('Error in /about:', error.stack);
+    console.error(`Error in /about for user ${ctx.from.id}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
@@ -379,7 +382,7 @@ bot.action('buy', async (ctx) => {
       },
     });
   } catch (error) {
-    console.error('Payment error:', error.stack);
+    console.error(`Payment error for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
   }
 });
@@ -407,7 +410,7 @@ bot.command('check_payment', async (ctx) => {
     }
     return ctx.reply('Платёж ещё не завершён или возникла ошибка. Попробуйте позже.');
   } catch (error) {
-    console.error('Error in /check_payment:', error.stack);
+    console.error(`Error in /check_payment for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка при проверке статуса. Попробуйте позже.');
   }
 });
@@ -451,7 +454,7 @@ bot.command('renew_link', async (ctx) => {
       },
     });
   } catch (error) {
-    console.error('Error in /renew_link:', error.stack);
+    console.error(`Error in /renew_link for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при обновлении ссылки. Свяжитесь с поддержкой.');
   }
 });
@@ -516,7 +519,7 @@ bot.action('export_subscribers', async (ctx) => {
         { caption: 'Список оплаченных подписчиков' }
     );
   } catch (error) {
-    console.error('Error exporting subscribers:', error.stack);
+    console.error(`Error exporting subscribers for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при выгрузке подписчиков. Попробуйте позже.');
   }
 });
@@ -526,8 +529,12 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   try {
+    console.log('Setting webhook');
     await bot.telegram.setWebhook(`https://${process.env.RENDER_URL}/bot${process.env.BOT_TOKEN}`);
-    console.log('Webhook set');
+    console.log('Webhook set successfully');
+    // Проверка статуса вебхука
+    const webhookInfo = await bot.telegram.getWebhookInfo();
+    console.log('Webhook info:', JSON.stringify(webhookInfo));
   } catch (error) {
     console.error('Failed to set webhook:', error.stack);
   }
