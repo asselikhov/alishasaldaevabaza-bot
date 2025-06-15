@@ -9,10 +9,8 @@ const app = express();
 app.use(express.json());
 
 // Подключение к MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => console.log('Connected to MongoDB'))
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
 // Схема пользователя
@@ -57,6 +55,18 @@ const setSupportMenu = async (userId) => {
   }
   await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
 };
+
+// Обработка возврата от ЮKassa
+app.get('/return', async (req, res) => {
+  const { paymentId } = req.query;
+  if (paymentId) {
+    const user = await User.findOne({ paymentId });
+    if (user) {
+      await bot.telegram.sendMessage(user.chatId, 'Оплата завершена! Пожалуйста, дождитесь подтверждения в боте.');
+    }
+  }
+  res.send('Оплата обработана! Вы будете перенаправлены в Telegram.');
+});
 
 // Health check для Render
 app.get('/health', (req, res) => res.sendStatus(200));
@@ -127,7 +137,7 @@ app.post('/webhook/yookassa', async (req, res) => {
             `Новый успешный платёж от user_${user.userId} (paymentId: ${object.id})`
         );
         // Обновляем меню для пользователя
-        await setSupportMenu(user.userId);
+        await setSupportMenu(userId);
       } catch (error) {
         console.error('Error processing webhook:', error);
         await bot.telegram.sendMessage(
@@ -276,6 +286,7 @@ bot.command('buy', async (ctx) => {
       description: 'Доступ к закрытому Telegram каналу',
       paymentId,
       userId,
+      returnUrl: process.env.RETURN_URL, // Используем RETURN_URL из .env
     });
 
     await User.findOneAndUpdate(
