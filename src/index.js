@@ -53,7 +53,7 @@ const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => String(
 // Инициализация бота
 console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
 const bot = new Telegraf(process.env.BOT_TOKEN);
-bot.use(session()); // Подключаем middleware для сессий
+bot.use(session());
 bot.catch((err, ctx) => {
   console.error('Telegraf global error for update', ctx?.update, ':', err.stack);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
@@ -80,14 +80,20 @@ app.all('/ping', (req, res) => {
 // ЮKassa конфигурация
 const { createPayment } = require('./yookassa');
 
-// Задержка для избежания лимитов Telegram API
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// Кэшированные настройки
+let cachedSettings = null;
+
+async function getSettings() {
+  if (!cachedSettings) {
+    cachedSettings = await Settings.findOne() || new Settings();
+  }
+  return cachedSettings;
+}
 
 // Установка главного меню
 const setMainMenu = async (userId) => {
   try {
     console.log(`Setting main menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
-    await delay(100);
     const isAdmin = adminIds.includes(userId);
     const commands = [];
     const keyboard = isAdmin ? {
@@ -139,7 +145,7 @@ bot.start(async (ctx) => {
     }
     await setMainMenu(userId);
 
-    const settings = await Settings.findOne() || new Settings();
+    const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
     await ctx.replyWithMarkdown(
         getWelcomeMessage(),
@@ -264,7 +270,7 @@ bot.on('text', async (ctx) => {
       if (text.length < 10) {
         return ctx.reply('Описание должно быть не короче 10 символов. Попробуйте снова:');
       }
-      await Settings.findOneAndUpdate(
+      cachedSettings = await Settings.findOneAndUpdate(
           {},
           { channelDescription: text },
           { upsert: true, new: true }
@@ -278,7 +284,7 @@ bot.on('text', async (ctx) => {
       } else if (!supportLink.startsWith('http://') && !supportLink.startsWith('https://')) {
         return ctx.reply('Введите действительный URL или Telegram-username (например, @Username). Попробуйте снова:');
       }
-      await Settings.findOneAndUpdate(
+      cachedSettings = await Settings.findOneAndUpdate(
           {},
           { supportLink },
           { upsert: true, new: true }
@@ -452,7 +458,7 @@ bot.action('about', async (ctx) => {
   const userId = ctx.from.id.toString();
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    const settings = await Settings.findOne() || new Settings();
+    const settings = await getSettings();
     try {
       await ctx.editMessageText(settings.channelDescription, {
         parse_mode: 'Markdown',
@@ -480,7 +486,7 @@ bot.action('back', async (ctx) => {
   const userId = ctx.from.id.toString();
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    const settings = await Settings.findOne() || new Settings();
+    const settings = await getSettings();
     try {
       await ctx.editMessageText(getWelcomeMessage(), {
         parse_mode: 'Markdown',
