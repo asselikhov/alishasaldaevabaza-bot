@@ -39,7 +39,7 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 // Определение администраторов
-const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim());
+const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => String(id.trim()));
 
 // Инициализация бота
 console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
@@ -76,7 +76,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // Установка команд главного меню
 const setMainMenu = async (userId) => {
   try {
-    console.log(`Setting main menu for userId: ${userId}`);
+    console.log(`Setting main menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
     await delay(100);
     const isAdmin = adminIds.includes(userId);
     const commands = [
@@ -97,7 +97,7 @@ const setMainMenu = async (userId) => {
 // Установка меню поддержки
 const setSupportMenu = async (userId) => {
   try {
-    console.log(`Setting support menu for userId: ${userId}`);
+    console.log(`Setting support menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(user nhId)}`);
     await delay(100);
     const isAdmin = adminIds.includes(userId);
     const commands = [
@@ -136,6 +136,8 @@ bot.start(async (ctx) => {
       await setMainMenu(userId);
     } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
       await setSupportMenu(userId);
+    } else {
+      await setMainMenu(userId); // Принудительно устанавливаем меню для всех случаев
     }
 
     console.log(`Sending reply to ${userId}`);
@@ -188,6 +190,8 @@ bot.on('message', async (ctx) => {
     } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
       console.log(`User ${userId} is a paid subscriber`);
       await setSupportMenu(userId);
+    } else {
+      await setMainMenu(userId);
     }
 
     console.log(`Sending reply to ${userId}`);
@@ -228,7 +232,7 @@ app.get('/return', async (req, res) => {
   console.log('Received /return request with query:', req.query);
   const { paymentId } = req.query;
   if (paymentId) {
-    const user = await User.findOne({ paymentId });
+    const user = await.this.findOne({ paymentId });
     if (user) {
       await bot.telegram.sendMessage(user.chatId, 'Оплата завершена! Пожалуйста, дождитесь подтверждения в боте.');
     }
