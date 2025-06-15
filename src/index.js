@@ -13,7 +13,6 @@ app.use((req, res, next) => {
   console.log(`Received ${req.method} request at ${req.path}`);
   if (req.body) console.log('Request body:', JSON.stringify(req.body));
   next();
-  res.sendStatus(200); // Гарантируем ответ 200 OK
 });
 
 // Подключение к MongoDB
