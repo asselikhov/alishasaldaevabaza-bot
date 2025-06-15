@@ -85,7 +85,7 @@ const setMainMenu = async (userId) => {
       { command: 'renew_link', description: 'Обновить ссылку на канал' },
     ];
     if (isAdmin) {
-      commands.push({ command: 'admin', description: 'Админ панель' });
+      commands.push({ command: 'admin', description: '👑 Админ панель' });
     }
     await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
     console.log(`Main menu set successfully for userId: ${userId}`);
@@ -105,7 +105,7 @@ const setSupportMenu = async (userId) => {
       { command: 'renew_link', description: 'Обновить ссылку на канал' },
     ];
     if (isAdmin) {
-      commands.push({ command: 'admin', description: 'Админ панель' });
+      commands.push({ command: 'admin', description: '👑 Админ панель' });
     }
     await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
     console.log(`Support menu set successfully for userId: ${userId}`);
@@ -155,7 +155,6 @@ bot.start(async (ctx) => {
                 { text: '💬 Техподдержка', url: 'https://t.me/Eagleshot' }
               ],
               [{ text: '💡 О канале', callback_data: 'about' }],
-              ...(adminIds.includes(userId) ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
             ],
           },
         }
@@ -199,7 +198,7 @@ bot.on('message', async (ctx) => {
 
 - быстрая доставка
 - ооооочеень низкие цены
-- все заказы можно сделать через Вконтакte`,
+- все заказы можно сделать через Вконтакте`,
         {
           reply_markup: {
             inline_keyboard: [
@@ -208,7 +207,6 @@ bot.on('message', async (ctx) => {
                 { text: '💬 Техподдержка', url: 'https://t.me/Eagleshot' }
               ],
               [{ text: '💡 О канале', callback_data: 'about' }],
-              ...(adminIds.includes(userId) ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
             ],
           },
         }
@@ -320,9 +318,8 @@ app.post('/webhook/yookassa', async (req, res) => {
   res.sendStatus(200);
 });
 
-// Обработка нажатий на кнопки
-bot.action('admin', async (ctx) => {
-  await ctx.answerCbQuery();
+// Обработка команды /admin
+bot.command('admin', async (ctx) => {
   const userId = ctx.from.id.toString();
   if (!adminIds.includes(userId)) {
     return ctx.reply('Доступ запрещён. Эта команда только для администратора.');
