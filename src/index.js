@@ -92,7 +92,7 @@ async function getSettings() {
 }
 
 // Установка главного меню
-const setMainMenu = async (ctx) => {
+const setMainMenu = async (ctx, silent = false) => {
   try {
     const userId = String(ctx.from.id);
     console.log(`Setting main menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
@@ -107,18 +107,33 @@ const setMainMenu = async (ctx) => {
         },
       };
       console.log(`Sending keyboard to user ${userId}:`, JSON.stringify(keyboard));
-      await ctx.reply('Главное меню:', keyboard);
+      if (!silent) {
+        await ctx.reply('Главное меню:', keyboard);
+      } else {
+        await ctx.telegram.sendChatAction(ctx.chat.id, 'typing'); // Имитация активности
+        await ctx.telegram.sendMessage(ctx.chat.id, '.', keyboard); // Отправляем точку, чтобы обновить клавиатуру
+        await ctx.deleteMessage(ctx.chat.id, ctx.message.message_id + 1); // Удаляем сообщение с точкой
+      }
     } else {
-      await ctx.reply('Главное меню:', {
-        reply_markup: {
-          remove_keyboard: true,
-        },
-      });
+      if (!silent) {
+        await ctx.reply('Главное меню:', {
+          reply_markup: {
+            remove_keyboard: true,
+          },
+        });
+      } else {
+        await ctx.telegram.sendMessage(ctx.chat.id, '.', {
+          reply_markup: {
+            remove_keyboard: true,
+          },
+        });
+        await ctx.deleteMessage(ctx.chat.id, ctx.message.message_id + 1);
+      }
     }
     console.log(`Main menu set successfully for userId: ${userId}`);
   } catch (error) {
     console.error(`Error setting main menu for userId ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при установке меню.');
+    if (!silent) await ctx.reply('Ошибка при установке меню.');
   }
 };
 
@@ -199,8 +214,8 @@ bot.hears('👑 Админ панель', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    await setMainMenu(ctx); // Переустанавливаем меню
-    await ctx.reply('Админ-панель:', {
+    await setMainMenu(ctx, true); // Устанавливаем меню без сообщения
+    await ctx.reply('Админ панель:\n➖➖➖➖➖➖➖➖➖➖➖', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
