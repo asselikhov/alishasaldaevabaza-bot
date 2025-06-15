@@ -37,7 +37,7 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
             },
           ],
         },
-      }),
+      })
     });
 
     if (!response.ok) {
