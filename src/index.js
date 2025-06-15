@@ -180,14 +180,14 @@ bot.action('admin_panel', async (ctx) => {
   }
 });
 
-// Обработчик кнопки "Назад" в админ-панели
+// Обработчик кнопки "Назад"
 bot.action('back', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     const settings = await getSettings();
-    await ctx.replyWithMarkdown(getWelcomeMessage(), {
+    let replyMarkup = {
       reply_markup: {
         inline_keyboard: [
           [
@@ -196,25 +196,16 @@ bot.action('back', async (ctx) => {
           ],
         ],
       },
-    });
+    };
     if (adminIds.includes(userId)) {
-      await ctx.replyWithMarkdown('', {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '👑 Админ панель', callback_data: 'admin_panel' },
-              { text: '💡 О канале', callback_data: 'about' },
-            ],
-          ],
-        },
-      });
+      replyMarkup.reply_markup.inline_keyboard.push([
+        { text: '👑 Админ панель', callback_data: 'admin_panel' },
+        { text: '💡 О канале', callback_data: 'about' },
+      ]);
     } else {
-      await ctx.replyWithMarkdown('', {
-        reply_markup: {
-          inline_keyboard: [[{ text: '💡 О канале', callback_data: 'about' }]],
-        },
-      });
+      replyMarkup.reply_markup.inline_keyboard.push([{ text: '💡 О канале', callback_data: 'about' }]);
     }
+    await ctx.replyWithMarkdown(getWelcomeMessage(), replyMarkup);
   } catch (error) {
     console.error(`Error in back for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
