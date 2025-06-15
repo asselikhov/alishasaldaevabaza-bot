@@ -170,6 +170,7 @@ bot.action('admin_panel', async (ctx) => {
           [{ text: 'Редактировать', callback_data: 'edit' }],
           [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
           [{ text: 'Статистика', callback_data: 'stats' }],
+          [{ text: 'Назад', callback_data: 'back' }],
         ],
       },
     });
@@ -196,6 +197,7 @@ bot.action('back_to_admin', async (ctx) => {
           [{ text: 'Редактировать', callback_data: 'edit' }],
           [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
           [{ text: 'Статистика', callback_data: 'stats' }],
+          [{ text: 'Назад', callback_data: 'back' }],
         ],
       },
     });
@@ -412,7 +414,7 @@ bot.action('stats', async (ctx) => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Назад', callback_data: 'back_to_admin' }],
+          [{ text: 'Назад', callback_data: 'back' }],
         ],
       },
     });
