@@ -13,6 +13,7 @@ app.use((req, res, next) => {
   console.log(`Received ${req.method} request at ${req.path}`);
   if (req.body) console.log('Request body:', JSON.stringify(req.body));
   next();
+  res.sendStatus(200); // Гарантируем ответ 200 OK
 });
 
 // Подключение к MongoDB
@@ -41,7 +42,7 @@ const User = mongoose.model('User', UserSchema);
 // Инициализация бота
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.catch((err, ctx) => {
-  console.error('Telegraf error for update', ctx.update, ':', err);
+  console.error('Telegraf error for update', ctx?.update, ':', err);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
 
@@ -66,6 +67,98 @@ const setSupportMenu = async (userId) => {
   }
   await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
 };
+
+// Обработчик команды /start (с приоритетом)
+bot.start(async (ctx) => {
+  console.log('Received /start command from', ctx.from.id);
+  const userId = ctx.from.id.toString();
+  const chatId = ctx.chat.id.toString();
+  const { first_name, username, phone_number } = ctx.from;
+
+  try {
+    console.log('Processing /start for userId:', userId);
+    let user = await User.findOne({ userId });
+    console.log('User found or to be created:', user ? 'exists' : 'new');
+    if (!user) {
+      console.log('Creating new user:', userId);
+      user = await User.findOneAndUpdate(
+          { userId },
+          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
+          { upsert: true, new: true }
+      );
+      await setMainMenu(userId);
+    } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
+      await setSupportMenu(userId);
+    }
+
+    console.log('Sending reply to', userId);
+    await ctx.replyWithMarkdown(
+        `*Привет!* Я очень рада видеть тебя тут! 😊  
+Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
+Давай экономить вместе ❤️
+
+**Почему это выгодно?**
+- 🚚 *Быстрая доставка*
+- 💸 *Ооооочеень низкие цены*
+- 📱 *Все заказы можно сделать через Вконтакте*`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
+            ],
+          },
+        }
+    );
+    console.log('Reply sent to', userId);
+  } catch (error) {
+    console.error('Error in /start for user', userId, ':', error);
+    await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
+  }
+});
+
+// Обработчик сообщений (после /start)
+bot.on('message', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const chatId = ctx.chat.id.toString();
+  const { first_name, username, phone_number } = ctx.from;
+  console.log('Received message from', userId, 'in chat', chatId, 'text:', ctx.message?.text);
+
+  let user = await User.findOne({ userId });
+  if (!user) {
+    try {
+      console.log('Creating new user:', userId);
+      user = await User.findOneAndUpdate(
+          { userId },
+          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
+          { upsert: true, new: true }
+      );
+      await setMainMenu(userId);
+    } catch (error) {
+      console.error('Error creating user:', error);
+    }
+  } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
+    console.log('User', userId, 'is a paid subscriber');
+    await setSupportMenu(userId);
+  }
+
+  await ctx.replyWithMarkdown(
+      `*Привет!* Я очень рада видеть тебя тут! 😊  
+Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
+Давай экономить вместе ❤️
+
+**Почему это выгодно?**
+- 🚚 *Быстрая доставка*
+- 💸 *Ооооочеень низкие цены*
+- 📱 *Все заказы можно сделать через Вконтакте*`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
+          ],
+        },
+      }
+  ).catch(error => console.error('Error sending reply:', error));
+});
 
 // Обработчик корневого пути
 app.get('/', (req, res) => {
@@ -163,98 +256,6 @@ app.post('/webhook/yookassa', async (req, res) => {
     }
   }
   res.sendStatus(200);
-});
-
-// Автоматическое приветствие при первом сообщении
-bot.on('message', async (ctx) => {
-  const userId = ctx.from.id.toString();
-  const chatId = ctx.chat.id.toString();
-  const { first_name, username, phone_number } = ctx.from;
-  console.log('Received message from', userId, 'in chat', chatId);
-
-  let user = await User.findOne({ userId });
-  if (!user) {
-    try {
-      console.log('Creating new user:', userId);
-      user = await User.findOneAndUpdate(
-          { userId },
-          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
-          { upsert: true, new: true }
-      );
-      await setMainMenu(userId);
-    } catch (error) {
-      console.error('Error creating user:', error);
-    }
-  } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
-    console.log('User', userId, 'is a paid subscriber');
-    await setSupportMenu(userId);
-  }
-
-  await ctx.replyWithMarkdown(
-      `*Привет!* Я очень рада видеть тебя тут! 😊  
-Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
-Давай экономить вместе ❤️
-
-**Почему это выгодно?**
-- 🚚 *Быстрая доставка*
-- 💸 *Ооооочеень низкие цены*
-- 📱 *Все заказы можно сделать через Вконтакте*`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
-          ],
-        },
-      }
-  ).catch(error => console.error('Error sending reply:', error));
-});
-
-// Обработка команды /start
-bot.start(async (ctx) => {
-  console.log('Received /start command from', ctx.from.id);
-  const userId = ctx.from.id.toString();
-  const chatId = ctx.chat.id.toString();
-  const { first_name, username, phone_number } = ctx.from;
-
-  try {
-    console.log('Processing /start for userId:', userId);
-    let user = await User.findOne({ userId });
-    console.log('User found or to be created:', user ? 'exists' : 'new');
-    if (!user) {
-      console.log('Creating new user:', userId);
-      user = await User.findOneAndUpdate(
-          { userId },
-          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
-          { upsert: true, new: true }
-      );
-      await setMainMenu(userId);
-    } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
-      await setSupportMenu(userId);
-    }
-
-    console.log('Sending reply to', userId);
-    await ctx.replyWithMarkdown(
-        `*Привет!* Я очень рада видеть тебя тут! 😊  
-Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
-Давай экономить вместе ❤️
-
-**Почему это выгодно?**
-- 🚚 *Быстрая доставка*
-- 💸 *Ооооочеень низкие цены*
-- 📱 *Все заказы можно сделать через Вконтакте*`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
-            ],
-          },
-        }
-    );
-    console.log('Reply sent to', userId);
-  } catch (error) {
-    console.error('Error in /start for user', userId, ':', error);
-    await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
-  }
 });
 
 // Обработка нажатий на кнопки
@@ -388,35 +389,34 @@ bot.command('renew_link', async (ctx) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+        },
+      });
+    }
+    const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+    const chatInvite = await ctx.telegram.createChatInviteLink(
+        process.env.CHANNEL_ID,
+        {
+          name: `Invite for user_${userId}`,
+          member_limit: 1,
+          creates_join_request: false,
+          expire_date: expireDate,
         }
+    );
+    await User.findOneAndUpdate(
+        { userId },
+        { inviteLink: chatInvite.invite_link, inviteLinkExpires: expireDate },
+        { new: true }
+    );
+    return ctx.reply('Ваша новая ссылка сгенерирована (действует 24 часа):', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
       },
     });
+  } catch (error) {
+    console.error('Error in /renew_link:', error);
+    await ctx.reply('Ошибка при обновлении ссылки. Свяжитесь с поддержкой.');
   }
-  const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
-  const chatInvite = await ctx.telegram.createChatInviteLink(
-      process.env.CHANNEL_ID,
-      {
-        name: `Invite for user_${userId}`,
-        member_limit: 1,
-        creates_join_request: false,
-        expire_date: expireDate,
-      }
-  );
-  await User.findOneAndUpdate(
-      { userId },
-      { inviteLink: chatInvite.invite_link, inviteLinkExpires: expireDate },
-      { new: true }
-  );
-  return ctx.reply('Ваша новая ссылка сгенерирована (действует 24 часа):', {
-    parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
-    },
-  });
-} catch (error) {
-  console.error('Error in /renew_link:', error);
-  await ctx.reply('Ошибка при обновлении ссылки. Свяжитесь с поддержкой.');
-}
 });
 
 // Обработка выгрузки подписчиков
