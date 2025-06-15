@@ -8,6 +8,12 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 
+// Логирование всех запросов
+app.use((req, res, next) => {
+  console.log(`Received ${req.method} request at ${req.path}`);
+  next();
+});
+
 // Подключение к MongoDB
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
@@ -26,7 +32,7 @@ const UserSchema = new mongoose.Schema({
   username: String,
   phoneNumber: String,
   paymentDate: Date,
-  paymentDocument: { type: String, default: null }, // Изменено на String для хранения ссылки
+  paymentDocument: { type: String, default: null },
 });
 
 const User = mongoose.model('User', UserSchema);
@@ -63,6 +69,7 @@ app.get('/', (req, res) => {
 
 // Обработка возврата от ЮKassa
 app.get('/return', async (req, res) => {
+  console.log('Received /return request with query:', req.query);
   const { paymentId } = req.query;
   if (paymentId) {
     const user = await User.findOne({ paymentId });
@@ -78,14 +85,14 @@ app.get('/health', (req, res) => res.sendStatus(200));
 
 // Вебхук для ЮKassa
 app.post('/webhook/yookassa', async (req, res) => {
+  console.log('Received Yookassa webhook with body:', req.body);
   const { event, object } = req.body;
-  console.log(`Received Yookassa webhook: ${event}`);
 
   if (event === 'payment.succeeded') {
     const user = await User.findOne({ paymentId: object.id });
     if (user && !user.joinedChannel) {
       try {
-        const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60; // 24 часа
+        const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
         const chatInvite = await bot.telegram.createChatInviteLink(
             process.env.CHANNEL_ID,
             {
@@ -96,7 +103,6 @@ app.post('/webhook/yookassa', async (req, res) => {
             }
         );
 
-        // Создание текстового документа с данными платежа
         const paymentText = `Платежный документ\n` +
             `ID транзакции: ${object.id}\n` +
             `Сумма: ${object.amount.value} ${object.amount.currency}\n` +
@@ -113,7 +119,7 @@ app.post('/webhook/yookassa', async (req, res) => {
               caption: `Документ оплаты для user_${user.userId}`,
             }
         );
-        const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.split('-100')[1]}/${paymentDoc.message_id}`; // Ссылка на сообщение
+        const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.split('-100')[1]}/${paymentDoc.message_id}`;
 
         await User.findOneAndUpdate(
             { userId: user.userId, paymentId: object.id },
@@ -123,7 +129,7 @@ app.post('/webhook/yookassa', async (req, res) => {
               inviteLink: chatInvite.invite_link,
               inviteLinkExpires: expireDate,
               paymentDate: new Date(),
-              paymentDocument, // Сохранение ссылки на документ
+              paymentDocument,
             },
             { new: true }
         );
@@ -141,7 +147,6 @@ app.post('/webhook/yookassa', async (req, res) => {
             process.env.ADMIN_CHAT_ID,
             `Новый успешный платёж от user_${user.userId} (paymentId: ${object.id})`
         );
-        // Обновляем меню для пользователя
         await setSupportMenu(userId);
       } catch (error) {
         console.error('Error processing webhook:', error);
@@ -162,7 +167,6 @@ bot.on('message', async (ctx) => {
   const { first_name, username, phone_number } = ctx.from;
   console.log('Received message from', userId, 'in chat', chatId);
 
-  // Проверяем, существует ли пользователь в базе
   let user = await User.findOne({ userId });
   if (!user) {
     try {
@@ -172,34 +176,17 @@ bot.on('message', async (ctx) => {
           { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
           { upsert: true, new: true }
       );
-
       await setMainMenu(userId);
-      await ctx.replyWithMarkdown(
-          `*Привет!* Я очень рада видеть тебя тут! 😊  
-Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
-Давай экономить вместе ❤️
-
-**Почему это выгодно?**
-- 🚚 *Быстрая доставка*
-- 💸 *Ооооочеень низкие цены*
-- 📱 *Все заказы можно сделать через Вконтакте*`,
-          {
-            reply_markup: {
-              inline_keyboard: [
-                ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
-              ],
-            },
-          }
-      );
     } catch (error) {
-      console.error('Error in first message:', error);
-      await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
+      console.error('Error creating user:', error);
     }
   } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
     console.log('User', userId, 'is a paid subscriber');
     await setSupportMenu(userId);
-    await ctx.replyWithMarkdown(
-        `*Привет!* Я очень рада видеть тебя тут! 😊  
+  }
+
+  await ctx.replyWithMarkdown(
+      `*Привет!* Я очень рада видеть тебя тут! 😊  
 Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем *закрытом тг канале*!  
 Давай экономить вместе ❤️
 
@@ -207,18 +194,14 @@ bot.on('message', async (ctx) => {
 - 🚚 *Быстрая доставка*
 - 💸 *Ооооочеень низкие цены*
 - 📱 *Все заказы можно сделать через Вконтакте*`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: 'Техподдержка', callback_data: 'support' },
-                { text: 'О магазине', callback_data: 'about' },
-              ],
-            ],
-          },
-        }
-    );
-  }
+      {
+        reply_markup: {
+          inline_keyboard: [
+            ...(userId === process.env.ADMIN_CHAT_ID ? [[{ text: 'Админ панель', callback_data: 'admin' }]] : []),
+          ],
+        },
+      }
+  ).catch(error => console.error('Error sending reply:', error));
 });
 
 // Обработка команды /start
@@ -305,7 +288,7 @@ bot.action('about', async (ctx) => {
   );
 });
 
-// Команда покупки (через текстовую команду для совместимости)
+// Команда покупки
 bot.command('buy', async (ctx) => {
   const userId = ctx.from.id.toString();
   const chatId = ctx.chat.id.toString();
@@ -333,7 +316,7 @@ bot.command('buy', async (ctx) => {
       description: 'Доступ к закрытому Telegram каналу',
       paymentId,
       userId,
-      returnUrl: process.env.RETURN_URL, // Используем RETURN_URL из .env
+      returnUrl: process.env.RETURN_URL,
     });
 
     await User.findOneAndUpdate(
@@ -443,26 +426,19 @@ bot.action('export_subscribers', async (ctx) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Subscribers');
 
-    // Настройка заголовков
     worksheet.columns = [
       { header: 'Telegram ID', key: 'userId', width: 20 },
       { header: 'Имя', key: 'firstName', width: 20 },
       { header: 'Telegram-имя', key: 'username', width: 20 },
       { header: 'Телефон', key: 'phoneNumber', width: 15 },
       { header: 'Дата оплаты', key: 'paymentDate', width: 20 },
-      { header: 'Платежный документ', key: 'paymentDocument', width: 30 }, // Обновлённый столбец
+      { header: 'Платежный документ', key: 'paymentDocument', width: 30 },
     ];
 
-    // Форматирование заголовков
     worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFADD8E6' },
-    };
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFADD8E6' } };
     worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
-    // Добавление данных
     subscribers.forEach((sub) => {
       worksheet.addRow({
         userId: sub.userId,
@@ -474,7 +450,6 @@ bot.action('export_subscribers', async (ctx) => {
       });
     });
 
-    // Автонастройка ширины столбцов
     worksheet.columns.forEach((column) => {
       let maxLength = 0;
       column.eachCell({ includeEmpty: true }, (cell) => {
@@ -486,11 +461,9 @@ bot.action('export_subscribers', async (ctx) => {
       column.width = maxLength < 10 ? 10 : maxLength;
     });
 
-    // Сохранение файла
     const buffer = await workbook.xlsx.write();
     const fileName = `Subscribers_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
-    // Отправка файла
     await ctx.replyWithDocument(
         { source: buffer, filename: fileName },
         { caption: 'Список оплаченных подписчиков' }
@@ -505,8 +478,12 @@ bot.action('export_subscribers', async (ctx) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
-  await bot.telegram.setWebhook(`https://${process.env.RENDER_URL}/bot${process.env.BOT_TOKEN}`);
-  console.log('Webhook set');
+  try {
+    await bot.telegram.setWebhook(`https://${process.env.RENDER_URL}/bot${process.env.BOT_TOKEN}`);
+    console.log('Webhook set');
+  } catch (error) {
+    console.error('Failed to set webhook:', error);
+  }
 });
 
 // Обработка остановки
