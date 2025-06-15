@@ -39,11 +39,20 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 // Инициализация бота
-console.log('Initializing Telegraf bot');
+console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.catch((err, ctx) => {
   console.error('Telegraf global error for update', ctx?.update, ':', err.stack);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
+});
+
+// Явная настройка вебхука
+app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
+  console.log(`[${new Date().toISOString()}] Webhook endpoint hit with body:`, JSON.stringify(req.body));
+  bot.handleUpdate(req.body, res).catch(err => {
+    console.error('Error handling webhook update:', err.stack);
+    res.status(500).send('Error processing webhook');
+  });
 });
 
 // ЮKassa конфигурация
@@ -532,7 +541,6 @@ app.listen(PORT, async () => {
     console.log('Setting webhook');
     await bot.telegram.setWebhook(`https://${process.env.RENDER_URL}/bot${process.env.BOT_TOKEN}`);
     console.log('Webhook set successfully');
-    // Проверка статуса вебхука
     const webhookInfo = await bot.telegram.getWebhookInfo();
     console.log('Webhook info:', JSON.stringify(webhookInfo));
   } catch (error) {
