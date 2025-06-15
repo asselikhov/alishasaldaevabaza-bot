@@ -181,29 +181,43 @@ bot.action('admin_panel', async (ctx) => {
 });
 
 // Обработчик кнопки "Назад" в админ-панели
-bot.action('back_to_admin', async (ctx) => {
+bot.action('back', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
-    return ctx.reply('Доступ запрещён.');
-  }
-
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    await ctx.editMessageText('Админ панель:\n➖➖➖➖➖➖➖➖➖➖➖', {
-      parse_mode: 'Markdown',
+    const settings = await getSettings();
+    await ctx.replyWithMarkdown(getWelcomeMessage(), {
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Редактировать', callback_data: 'edit' }],
-          [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
-          [{ text: 'Статистика', callback_data: 'stats' }],
-          [{ text: 'Назад', callback_data: 'back' }],
+          [
+            { text: '🔥 Купить', callback_data: 'buy' },
+            { text: '💬 Техподдержка', url: settings.supportLink },
+          ],
         ],
       },
     });
+    if (adminIds.includes(userId)) {
+      await ctx.replyWithMarkdown('', {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '👑 Админ панель', callback_data: 'admin_panel' },
+              { text: '💡 О канале', callback_data: 'about' },
+            ],
+          ],
+        },
+      });
+    } else {
+      await ctx.replyWithMarkdown('', {
+        reply_markup: {
+          inline_keyboard: [[{ text: '💡 О канале', callback_data: 'about' }]],
+        },
+      });
+    }
   } catch (error) {
-    console.error(`Error in back_to_admin for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при возврате в админ-панель.');
+    console.error(`Error in back for user ${userId}:`, error.stack);
+    await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
 
@@ -223,7 +237,7 @@ bot.action('edit', async (ctx) => {
         inline_keyboard: [
           [{ text: 'О канале', callback_data: 'edit_channel' }],
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
-          [{ text: 'Назад', callback_data: 'back_to_admin' }],
+          [{ text: 'Назад', callback_data: 'back' }],
         ],
       },
     });
@@ -498,80 +512,6 @@ bot.action('about', async (ctx) => {
     }
   } catch (error) {
     console.error(`Error in about for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
-  }
-});
-
-// Обработчик кнопки "Назад"
-bot.action('back', async (ctx) => {
-  await ctx.answerCbQuery();
-  const userId = String(ctx.from.id);
-  try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    const settings = await getSettings();
-    try {
-      await ctx.editMessageText(getWelcomeMessage(), {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '🔥 Купить', callback_data: 'buy' },
-              { text: '💬 Техподдержка', url: settings.supportLink },
-            ],
-          ],
-        },
-      });
-      if (adminIds.includes(userId)) {
-        await ctx.replyWithMarkdown('', {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '👑 Админ панель', callback_data: 'admin_panel' },
-                { text: '💡 О канале', callback_data: 'about' },
-              ],
-            ],
-          },
-        });
-      } else {
-        await ctx.replyWithMarkdown('', {
-          reply_markup: {
-            inline_keyboard: [[{ text: '💡 О канале', callback_data: 'about' }]],
-          },
-        });
-      }
-    } catch (editError) {
-      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
-      await ctx.replyWithMarkdown(getWelcomeMessage(), {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '🔥 Купить', callback_data: 'buy' },
-              { text: '💬 Техподдержка', url: settings.supportLink },
-            ],
-          ],
-        },
-      });
-      if (adminIds.includes(userId)) {
-        await ctx.replyWithMarkdown('', {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '👑 Админ панель', callback_data: 'admin_panel' },
-                { text: '💡 О канале', callback_data: 'about' },
-              ],
-            ],
-          },
-        });
-      } else {
-        await ctx.replyWithMarkdown('', {
-          reply_markup: {
-            inline_keyboard: [[{ text: '💡 О канале', callback_data: 'about' }]],
-          },
-        });
-      }
-    }
-  } catch (error) {
-    console.error(`Error in back for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
