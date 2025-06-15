@@ -97,7 +97,7 @@ const setMainMenu = async (userId) => {
 // Установка меню поддержки
 const setSupportMenu = async (userId) => {
   try {
-    console.log(`Setting support menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(user nhId)}`);
+    console.log(`Setting support menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
     await delay(100);
     const isAdmin = adminIds.includes(userId);
     const commands = [
@@ -232,7 +232,7 @@ app.get('/return', async (req, res) => {
   console.log('Received /return request with query:', req.query);
   const { paymentId } = req.query;
   if (paymentId) {
-    const user = await.this.findOne({ paymentId });
+    const user = await User.findOne({ paymentId });
     if (user) {
       await bot.telegram.sendMessage(user.chatId, 'Оплата завершена! Пожалуйста, дождитесь подтверждения в боте.');
     }
