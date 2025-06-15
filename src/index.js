@@ -34,6 +34,7 @@ const UserSchema = new mongoose.Schema({
   phoneNumber: String,
   paymentDate: Date,
   paymentDocument: { type: String, default: null },
+  lastActivity: { type: Date, default: Date.now },
 });
 
 const User = mongoose.model('User', UserSchema);
@@ -68,49 +69,32 @@ app.all('/ping', (req, res) => {
 });
 
 // ЮKassa конфигурация
-const { createPayment, checkPayment } = require('./yookassa');
+const { createPayment } = require('./yookassa');
 
 // Задержка для избежания лимитов Telegram API
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Установка команд главного меню
+// Установка главного меню
 const setMainMenu = async (userId) => {
   try {
     console.log(`Setting main menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
     await delay(100);
     const isAdmin = adminIds.includes(userId);
-    const commands = [
-      { command: 'buy', description: 'Оплатить доступ к каналу' },
-      { command: 'check_payment', description: 'Проверить статус оплаты' },
-      { command: 'renew_link', description: 'Обновить ссылку на канал' },
-    ];
-    if (isAdmin) {
-      commands.push({ command: 'admin', description: '👑 Админ панель' });
-    }
+    const commands = [];
+    const keyboard = isAdmin ? {
+      reply_markup: {
+        keyboard: [[{ text: '👑 Админ панель' }]],
+        resize_keyboard: true,
+        persistent: true,
+      },
+    } : {};
     await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
+    if (isAdmin) {
+      await bot.telegram.sendMessage(userId, 'Главное меню обновлено с админ-панелью.', keyboard);
+    }
     console.log(`Main menu set successfully for userId: ${userId}`);
   } catch (error) {
     console.error(`Error setting main menu for userId ${userId}:`, error.stack);
-  }
-};
-
-// Установка меню поддержки
-const setSupportMenu = async (userId) => {
-  try {
-    console.log(`Setting support menu for userId: ${userId}, adminIds: ${JSON.stringify(adminIds)}, isAdmin: ${adminIds.includes(userId)}`);
-    await delay(100);
-    const isAdmin = adminIds.includes(userId);
-    const commands = [
-      { command: 'support', description: 'Связаться с поддержкой' },
-      { command: 'renew_link', description: 'Обновить ссылку на канал' },
-    ];
-    if (isAdmin) {
-      commands.push({ command: 'admin', description: '👑 Админ панель' });
-    }
-    await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
-    console.log(`Support menu set successfully for userId: ${userId}`);
-  } catch (error) {
-    console.error(`Error setting support menu for userId ${userId}:`, error.stack);
   }
 };
 
@@ -129,16 +113,14 @@ bot.start(async (ctx) => {
       console.log(`Creating new user: ${userId}`);
       user = await User.findOneAndUpdate(
           { userId },
-          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
+          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number, lastActivity: new Date() },
           { upsert: true, new: true }
       );
       console.log(`User created: ${JSON.stringify(user)}`);
-      await setMainMenu(userId);
-    } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
-      await setSupportMenu(userId);
     } else {
-      await setMainMenu(userId); // Принудительно устанавливаем меню для всех случаев
+      await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     }
+    await setMainMenu(userId);
 
     console.log(`Sending reply to ${userId}`);
     await ctx.replyWithMarkdown(
@@ -168,57 +150,209 @@ bot.start(async (ctx) => {
   }
 });
 
-// Обработчик сообщений
-bot.on('message', async (ctx) => {
+// Обработчик кнопки "👑 Админ панель"
+bot.hears('👑 Админ панель', async (ctx) => {
   const userId = ctx.from.id.toString();
-  const chatId = ctx.chat.id.toString();
-  const { first_name, username, phone_number } = ctx.from;
-  console.log(`Received message from ${userId} in chat ${chatId}, text: ${ctx.message?.text}`);
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён. Эта функция только для администраторов.');
+  }
 
   try {
-    let user = await User.findOne({ userId });
-    console.log(`User found or to be created: ${user ? 'exists' : 'new'}`);
-    if (!user) {
-      console.log(`Creating new user: ${userId}`);
-      user = await User.findOneAndUpdate(
-          { userId },
-          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number },
-          { upsert: true, new: true }
-      );
-      console.log(`User created: ${JSON.stringify(user)}`);
-      await setMainMenu(userId);
-    } else if (user.paymentStatus === 'succeeded' && user.joinedChannel) {
-      console.log(`User ${userId} is a paid subscriber`);
-      await setSupportMenu(userId);
-    } else {
-      await setMainMenu(userId);
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await ctx.reply('Админ-панель:', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Редактировать о канале', callback_data: 'edit_about' }],
+          [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
+          [{ text: 'Статистика', callback_data: 'stats' }],
+        ],
+      },
+    });
+  } catch (error) {
+    console.error(`Error in admin panel for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при открытии админ-панели.');
+  }
+});
+
+// Обработчик кнопки "Редактировать о канале" (заглушка)
+bot.action('edit_about', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id.toString();
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await ctx.reply('Функция редактирования информации о канале пока в разработке.');
+  } catch (error) {
+    console.error(`Error in edit_about for user ${userId}:`, error.stack);
+    await ctx.reply('Произошла ошибка. Попробуйте позже.');
+  }
+});
+
+// Обработчик кнопки "Выгрузить подписчиков"
+bot.action('export_subscribers', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id.toString();
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    const subscribers = await User.find({ paymentStatus: 'succeeded', joinedChannel: true });
+
+    if (!subscribers.length) {
+      return ctx.reply('Нет оплаченных подписчиков для выгрузки.');
     }
 
-    console.log(`Sending reply to ${userId}`);
-    await ctx.replyWithMarkdown(
-        `Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Subscribers');
 
-ПОЧЕМУ ЭТО ВЫГОДНО?
+    worksheet.columns = [
+      { header: 'Telegram ID', key: 'userId', width: 20 },
+      { header: 'Имя', key: 'firstName', width: 20 },
+      { header: 'Telegram-имя', key: 'username', width: 20 },
+      { header: 'Телефон', key: 'phoneNumber', width: 15 },
+      { header: 'Дата оплаты', key: 'paymentDate', width: 20 },
+      { header: 'Платежный документ', key: 'paymentDocument', width: 30 },
+    ];
 
-- быстрая доставка
-- ооооочеень низкие цены
-- все заказы можно сделать через Вконтакте`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '🔥 Купить', callback_data: 'buy' },
-                { text: '💬 Техподдержка', url: 'https://t.me/Eagleshot' }
-              ],
-              [{ text: '💡 О канале', callback_data: 'about' }],
-            ],
-          },
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFADD8E6' } };
+    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    subscribers.forEach((sub) => {
+      worksheet.addRow({
+        userId: sub.userId,
+        firstName: sub.firstName || 'Не указано',
+        username: sub.username ? `@${sub.username}` : 'Не указано',
+        phoneNumber: sub.phoneNumber || 'Не указано',
+        paymentDate: sub.paymentDate ? sub.paymentDate.toLocaleString('ru-RU') : 'Не указано',
+        paymentDocument: sub.paymentDocument || 'Не указано',
+      });
+    });
+
+    worksheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? cell.value.toString().length : 10;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
         }
+      });
+      column.width = maxLength < 10 ? 10 : maxLength;
+    });
+
+    const buffer = await workbook.xlsx.write();
+    const fileName = `Subscribers_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    await ctx.replyWithDocument(
+        { source: buffer, filename: fileName },
+        { caption: 'Список оплаченных подписчиков' }
     );
-    console.log(`Reply sent to ${userId}`);
   } catch (error) {
-    console.error(`Error in message handler for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
+    console.error(`Error exporting subscribers for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при выгрузке подписчиков. Попробуйте позже.');
+  }
+});
+
+// Обработчик кнопки "Статистика"
+bot.action('stats', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id.toString();
+  if (!adminIds.includes(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    const totalUsers = await User.countDocuments();
+    const paidSubscribers = await User.countDocuments({ paymentStatus: 'succeeded', joinedChannel: true });
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentVisitors = await User.find({ lastActivity: { $gte: oneDayAgo } }).select('userId firstName username');
+
+    let visitorsList = 'Список посетителей за последние 24 часа:\n';
+    if (recentVisitors.length === 0) {
+      visitorsList += 'Нет активности за последние сутки.';
+    } else {
+      recentVisitors.forEach((visitor, index) => {
+        visitorsList += `${index + 1}. ${visitor.firstName || 'Не указано'} (@${visitor.username || 'без username'}, ID: ${visitor.userId})\n`;
+      });
+    }
+
+    const statsMessage = `*Статистика бота:*\n\n` +
+        `1. Пользователей: ${totalUsers}\n` +
+        `2. Подписчиков: ${paidSubscribers}\n` +
+        `3. ${visitorsList}`;
+
+    await ctx.replyWithMarkdown(statsMessage);
+  } catch (error) {
+    console.error(`Error in stats for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
+  }
+});
+
+// Обработчик кнопки "Купить"
+bot.action('buy', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id.toString();
+  const chatId = ctx.chat.id.toString();
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    const user = await User.findOne({ userId });
+    if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
+      const now = Math.floor(Date.now() / 1000);
+      if (user.inviteLinkExpires > now) {
+        return ctx.reply('Вы уже оплатили доступ! Вот ваша ссылка:', {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+          },
+        });
+      } else {
+        return ctx.reply('Ваша ссылка истекла. Свяжитесь с поддержкой для получения новой.');
+      }
+    }
+
+    const paymentId = uuidv4();
+    const payment = await createPayment({
+      amount: 399,
+      description: 'Доступ к закрытому Telegram каналу',
+      paymentId,
+      userId,
+      returnUrl: process.env.RETURN_URL,
+    });
+
+    await User.findOneAndUpdate(
+        { userId },
+        { paymentId, paymentStatus: 'pending', chatId, lastActivity: new Date() },
+        { upsert: true }
+    );
+
+    await ctx.reply('Перейдите по ссылке для оплаты:', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: 'Оплатить', url: payment.confirmation.confirmation_url }]],
+      },
+    });
+  } catch (error) {
+    console.error(`Payment error for user ${userId}:`, error.stack);
+    await ctx.reply('Произошла ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
+  }
+});
+
+// Обработчик кнопки "О канале"
+bot.action('about', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id.toString();
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await ctx.replyWithMarkdown(
+        'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊'
+    );
+  } catch (error) {
+    console.error(`Error in about for user ${userId}:`, error.stack);
+    await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
 
@@ -290,6 +424,7 @@ app.post('/webhook/yookassa', async (req, res) => {
               inviteLinkExpires: expireDate,
               paymentDate: new Date(),
               paymentDocument,
+              lastActivity: new Date(),
             },
             { new: true }
         );
@@ -309,7 +444,6 @@ app.post('/webhook/yookassa', async (req, res) => {
               `Новый успешный платёж от user_${user.userId} (paymentId: ${object.id})`
           );
         }
-        await setSupportMenu(user.userId);
       } catch (error) {
         console.error('Error processing webhook:', error.stack);
         await bot.telegram.sendMessage(
@@ -320,236 +454,6 @@ app.post('/webhook/yookassa', async (req, res) => {
     }
   }
   res.sendStatus(200);
-});
-
-// Обработка команды /admin
-bot.command('admin', async (ctx) => {
-  const userId = ctx.from.id.toString();
-  if (!adminIds.includes(userId)) {
-    return ctx.reply('Доступ запрещён. Эта команда только для администратора.');
-  }
-
-  try {
-    await ctx.reply('Админ-панель:', {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }]],
-      },
-    });
-  } catch (error) {
-    console.error(`Error in /admin for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при открытии админ-панели.');
-  }
-});
-
-bot.action('support', async (ctx) => {
-  await ctx.answerCbQuery();
-  try {
-    await ctx.replyWithMarkdown(
-        'Если у вас возникли вопросы или проблемы, напишите в техническую поддержку: @YourSupportUsername или свяжитесь через [почту](mailto:support@example.com).'
-    );
-  } catch (error) {
-    console.error(`Error in /support for user ${ctx.from.id}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
-  }
-});
-
-bot.action('about', async (ctx) => {
-  await ctx.answerCbQuery();
-  try {
-    await ctx.replyWithMarkdown(
-        'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊'
-    );
-  } catch (error) {
-    console.error(`Error in /about for user ${ctx.from.id}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
-  }
-});
-
-bot.action('buy', async (ctx) => {
-  await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
-  const chatId = ctx.chat.id.toString();
-
-  try {
-    const user = await User.findOne({ userId });
-    if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
-      const now = Math.floor(Date.now() / 1000);
-      await setSupportMenu(userId);
-      if (user.inviteLinkExpires > now) {
-        return ctx.reply('Вы уже оплатили доступ! Вот ваша ссылка:', {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
-          },
-        });
-      } else {
-        return ctx.reply('Ваша ссылка истекла. Используйте /renew_link для получения новой.');
-      }
-    }
-
-    const paymentId = uuidv4();
-    const payment = await createPayment({
-      amount: 399,
-      description: 'Доступ к закрытому Telegram каналу',
-      paymentId,
-      userId,
-      returnUrl: process.env.RETURN_URL,
-    });
-
-    await User.findOneAndUpdate(
-        { userId },
-        { paymentId, paymentStatus: 'pending', chatId },
-        { upsert: true }
-    );
-
-    await ctx.reply('Перейдите по ссылке для оплаты:', {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[{ text: 'Оплатить', url: payment.confirmation.confirmation_url }]],
-      },
-    });
-  } catch (error) {
-    console.error(`Payment error for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
-  }
-});
-
-// Проверка статуса оплаты
-bot.command('check_payment', async (ctx) => {
-  const userId = ctx.from.id.toString();
-  try {
-    const user = await User.findOne({ userId });
-    if (!user) {
-      return ctx.reply('Вы ещё не начинали процесс оплаты.');
-    }
-    if (user.paymentStatus === 'succeeded' && user.inviteLink) {
-      const now = Math.floor(Date.now() / 1000);
-      if (user.inviteLinkExpires > now) {
-        return ctx.reply('Ваш платёж успешен! Вот ваша ссылка:', {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
-          },
-        });
-      } else {
-        return ctx.reply('Ваша ссылка истекла. Используйте /renew_link для получения новой.');
-      }
-    }
-    return ctx.reply('Платёж ещё не завершён или возникла ошибка. Попробуйте позже.');
-  } catch (error) {
-    console.error(`Error in /check_payment for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка при проверке статуса. Попробуйте позже.');
-  }
-});
-
-// Обновление истёкшей ссылки
-bot.command('renew_link', async (ctx) => {
-  const userId = ctx.from.id.toString();
-  try {
-    const user = await User.findOne({ userId, paymentStatus: 'succeeded' });
-    if (!user) {
-      return ctx.reply('Вы ещё не оплатили доступ или платёж не подтверждён.');
-    }
-    const now = Math.floor(Date.now() / 1000);
-    if (user.inviteLink && user.inviteLinkExpires > now) {
-      return ctx.reply('Ваша текущая ссылка всё ещё действительна:', {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
-        },
-      });
-    }
-    const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
-    const chatInvite = await ctx.telegram.createChatInviteLink(
-        process.env.CHANNEL_ID,
-        {
-          name: `Invite for user_${userId}`,
-          member_limit: 1,
-          creates_join_request: false,
-          expire_date: expireDate,
-        }
-    );
-    await User.findOneAndUpdate(
-        { userId },
-        { inviteLink: chatInvite.invite_link, inviteLinkExpires: expireDate },
-        { new: true }
-    );
-    return ctx.reply('Ваша новая ссылка сгенерирована (действует 24 часа):', {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
-      },
-    });
-  } catch (error) {
-    console.error(`Error in /renew_link for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при обновлении ссылки. Свяжитесь с поддержкой.');
-  }
-});
-
-// Обработка выгрузки подписчиков
-bot.action('export_subscribers', async (ctx) => {
-  const userId = ctx.from.id.toString();
-  if (!adminIds.includes(userId)) {
-    return ctx.reply('Доступ запрещён.');
-  }
-
-  try {
-    const subscribers = await User.find({ paymentStatus: 'succeeded', joinedChannel: true });
-
-    if (!subscribers.length) {
-      return ctx.reply('Нет оплаченных подписчиков для выгрузки.');
-    }
-
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Subscribers');
-
-    worksheet.columns = [
-      { header: 'Telegram ID', key: 'userId', width: 20 },
-      { header: 'Имя', key: 'firstName', width: 20 },
-      { header: 'Telegram-имя', key: 'username', width: 20 },
-      { header: 'Телефон', key: 'phoneNumber', width: 15 },
-      { header: 'Дата оплаты', key: 'paymentDate', width: 20 },
-      { header: 'Платежный документ', key: 'paymentDocument', width: 30 },
-    ];
-
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFADD8E6' } };
-    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-
-    subscribers.forEach((sub) => {
-      worksheet.addRow({
-        userId: sub.userId,
-        firstName: sub.firstName || 'Не указано',
-        username: sub.username ? `@${sub.username}` : 'Не указано',
-        phoneNumber: sub.phoneNumber || 'Не указано',
-        paymentDate: sub.paymentDate ? sub.paymentDate.toLocaleString('ru-RU') : 'Не указано',
-        paymentDocument: sub.paymentDocument || 'Не указано',
-      });
-    });
-
-    worksheet.columns.forEach((column) => {
-      let maxLength = 0;
-      column.eachCell({ includeEmpty: true }, (cell) => {
-        const columnLength = cell.value ? cell.value.toString().length : 10;
-        if (columnLength > maxLength) {
-          maxLength = columnLength;
-        }
-      });
-      column.width = maxLength < 10 ? 10 : maxLength;
-    });
-
-    const buffer = await workbook.xlsx.write();
-    const fileName = `Subscribers_${new Date().toISOString().slice(0, 10)}.xlsx`;
-
-    await ctx.replyWithDocument(
-        { source: buffer, filename: fileName },
-        { caption: 'Список оплаченных подписчиков' }
-    );
-  } catch (error) {
-    console.error(`Error exporting subscribers for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при выгрузке подписчиков. Попробуйте позже.');
-  }
 });
 
 // Запуск сервера
