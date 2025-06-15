@@ -56,6 +56,11 @@ const setSupportMenu = async (userId) => {
   await bot.telegram.setMyCommands(commands, { scope: { type: 'chat', chat_id: userId } });
 };
 
+// Обработчик корневого пути
+app.get('/', (req, res) => {
+  res.send('Это API бота alishasaldaevabaza-bot. Используйте /health для проверки статуса или обратитесь к боту в Telegram.');
+});
+
 // Обработка возврата от ЮKassa
 app.get('/return', async (req, res) => {
   const { paymentId } = req.query;
