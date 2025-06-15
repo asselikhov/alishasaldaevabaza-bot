@@ -1,0 +1,19 @@
+{
+  "name": "alishasaldaevabaza-bot",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "NODE_ENV=development node src/index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "mongoose": "^8.7.0",
+    "node-fetch": "^2.7.0",
+    "uuid": "^10.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {}
+}
