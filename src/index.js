@@ -129,7 +129,7 @@ bot.start(async (ctx) => {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: 'Купить за 399р.', callback_data: 'buy' },
+            { text: '🔥 Купить за 399р.', callback_data: 'buy' },
             { text: '💬 Техподдержка', url: settings.supportLink },
           ],
         ],
@@ -455,6 +455,9 @@ bot.action('stats', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    ctx.session = ctx.session || {};
+    ctx.session.navHistory = ctx.session.navHistory || [];
+    ctx.session.navHistory.push('admin_panel'); // Добавляем admin_panel в историю
     const now = Date.now();
     if (!cachedStats || now - lastStatsUpdate > statsCacheTime) {
       const totalUsers = await User.countDocuments();
