@@ -123,11 +123,13 @@ bot.start(async (ctx) => {
 
     const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
+    ctx.session = ctx.session || {};
+    ctx.session.navHistory = ctx.session.navHistory || [];
     let replyMarkup = {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '🔥 Купить', callback_data: 'buy' },
+            { text: 'Купить за 399р.', callback_data: 'buy' },
             { text: '💬 Техподдержка', url: settings.supportLink },
           ],
         ],
@@ -135,7 +137,7 @@ bot.start(async (ctx) => {
     };
     if (adminIds.includes(userId)) {
       replyMarkup.reply_markup.inline_keyboard.push([
-        { text: '👑 Админ панель', callback_data: 'admin_panel' },
+        { text: '👑 Админка', callback_data: 'admin_panel' },
         { text: '💡 О канале', callback_data: 'about' },
       ]);
     } else {
@@ -149,7 +151,7 @@ bot.start(async (ctx) => {
   }
 });
 
-// Обработчик кнопки "👑 Админ панель"
+// Обработчик кнопки "👑 Админка"
 bot.action('admin_panel', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
@@ -159,7 +161,10 @@ bot.action('admin_panel', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    await ctx.reply('Админ панель:\n➖➖➖➖➖➖➖➖➖➖➖', {
+    ctx.session = ctx.session || {};
+    ctx.session.navHistory = ctx.session.navHistory || [];
+    ctx.session.navHistory.push('start');
+    await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
@@ -182,26 +187,47 @@ bot.action('back', async (ctx) => {
   const userId = String(ctx.from.id);
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    const settings = await getSettings();
-    let replyMarkup = {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '🔥 Купить', callback_data: 'buy' },
-            { text: '💬 Техподдержка', url: settings.supportLink },
+    ctx.session = ctx.session || {};
+    ctx.session.navHistory = ctx.session.navHistory || [];
+    const lastAction = ctx.session.navHistory.pop() || 'start';
+
+    if (lastAction === 'start') {
+      const settings = await getSettings();
+      let replyMarkup = {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: 'Купить за 399р.', callback_data: 'buy' },
+              { text: '💬 Техподдержка', url: settings.supportLink },
+            ],
           ],
-        ],
-      },
-    };
-    if (adminIds.includes(userId)) {
-      replyMarkup.reply_markup.inline_keyboard.push([
-        { text: '👑 Админ панель', callback_data: 'admin_panel' },
-        { text: '💡 О канале', callback_data: 'about' },
-      ]);
-    } else {
-      replyMarkup.reply_markup.inline_keyboard.push([{ text: '💡 О канале', callback_data: 'about' }]);
+        },
+      };
+      if (adminIds.includes(userId)) {
+        replyMarkup.reply_markup.inline_keyboard.push([
+          { text: '👑 Админка', callback_data: 'admin_panel' },
+          { text: '💡 О канале', callback_data: 'about' },
+        ]);
+      } else {
+        replyMarkup.reply_markup.inline_keyboard.push([{ text: '💡 О канале', callback_data: 'about' }]);
+      }
+      await ctx.editMessageText(await getWelcomeMessage(), {
+        parse_mode: 'Markdown',
+        reply_markup: replyMarkup.reply_markup,
+      });
+    } else if (lastAction === 'admin_panel') {
+      await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Редактировать', callback_data: 'edit' }],
+            [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
+            [{ text: 'Статистика', callback_data: 'stats' }],
+            [{ text: 'Назад', callback_data: 'back' }],
+          ],
+        },
+      });
     }
-    await ctx.replyWithMarkdown(await getWelcomeMessage(), replyMarkup);
   } catch (error) {
     console.error(`Error in back for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
@@ -218,6 +244,9 @@ bot.action('edit', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    ctx.session = ctx.session || {};
+    ctx.session.navHistory = ctx.session.navHistory || [];
+    ctx.session.navHistory.push('admin_panel');
     await ctx.editMessageText('Выберите, что редактировать:', {
       parse_mode: 'Markdown',
       reply_markup: {
