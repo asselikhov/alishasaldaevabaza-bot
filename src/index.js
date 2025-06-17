@@ -197,7 +197,7 @@ bot.action('back', async (ctx) => {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: 'Купить за 399р.', callback_data: 'buy' },
+              { text: '🔥 Купить за 399р.', callback_data: 'buy' },
               { text: '💬 Техподдержка', url: settings.supportLink },
             ],
           ],
