@@ -480,8 +480,7 @@ bot.action('stats', async (ctx) => {
 
     const statsMessage = `Статистика бота:\n` +
         `➖➖➖➖➖➖➖➖➖➖➖\n` +
-        `Пользователей: ${cachedStats.totalUsers}\n` +
-        `Подписчиков: ${cachedStats.paidSubscribers}\n` +
+        `Пользователей: ${cachedStats.totalUsers} | Подписчиков: ${cachedStats.paidSubscribers}\n\n` +
         `${visitorsList}`;
 
     await ctx.editMessageText(statsMessage, {
