@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const SHOP_ID = process.env.YOOKASSA_SHOP_ID;
 const SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
+// Создание платежа через ЮKassa
 const createPayment = async ({ amount, description, paymentId, userId, returnUrl, email }) => {
   try {
     console.log(`Creating payment for user ${userId}, paymentId: ${paymentId}`);
@@ -17,17 +18,17 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
         type: 'redirect',
         return_url: returnUrl || 'https://alishasaldaevabaza-bot.onrender.com/return',
       },
-      description,
+      description: description.substring(0, 128), // Ограничение длины описания
       metadata: { userId, paymentId },
       receipt: {
         customer: { email: email || 'default@example.com' },
         items: [
           {
-            description: description.substring(0, 128), // Ограничение длины описания
+            description: description.substring(0, 128), // Ограничение длины для чека
             quantity: 1,
             amount: { value: amount.toFixed(2), currency: 'RUB' },
-            vat_code: 2,
-            payment_subject: 'service',
+            vat_code: 2, // НДС 20%
+            payment_subject: 'service', // Тип платежа
             tax_system_code: 1, // Общая система налогообложения
           },
         ],
@@ -57,6 +58,7 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
   }
 };
 
+// Проверка статуса платежа
 const checkPayment = async (paymentId) => {
   try {
     console.log(`Checking payment with paymentId: ${paymentId}`);
