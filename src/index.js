@@ -505,7 +505,7 @@ bot.action('buy', async (ctx) => {
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_API_KEY: ${process.env.YOOKASSA_API_KEY ? 'present' : 'missing'}`);
+    console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
       const now = Math.floor(Date.now() / 1000);

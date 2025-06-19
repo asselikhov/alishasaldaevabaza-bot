@@ -7,6 +7,31 @@ const SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 const createPayment = async ({ amount, description, paymentId, userId, returnUrl }) => {
   try {
     console.log(`Creating payment for user ${userId}, paymentId: ${paymentId}`);
+    const body = {
+      amount: {
+        value: amount.toFixed(2),
+        currency: 'RUB',
+      },
+      capture: true,
+      confirmation: {
+        type: 'redirect',
+        return_url: returnUrl || 'https://your-return-url.com',
+      },
+      description,
+      metadata: { userId, paymentId },
+      receipt: {
+        customer: { email: 'customer@example.com' },
+        items: [
+          {
+            description,
+            quantity: 1,
+            amount: { value: amount.toFixed(2), currency: 'RUB' },
+            vat_code: 1,
+          },
+        ],
+      },
+    };
+    console.log('Request body to Yookassa:', JSON.stringify(body, null, 2));
     const response = await fetch('https://api.yookassa.ru/v3/payments', {
       method: 'POST',
       headers: {
@@ -14,36 +39,14 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
         'Idempotence-Key': uuidv4(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        amount: {
-          value: amount.toFixed(2),
-          currency: 'RUB',
-        },
-        capture: true,
-        confirmation: {
-          type: 'redirect',
-          return_url: returnUrl || 'https://your-return-url.com',
-        },
-        description,
-        metadata: { userId, paymentId },
-        receipt: {
-          customer: { email: 'customer@example.com' },
-          items: [
-            {
-              description,
-              quantity: 1,
-              amount: { value: amount.toFixed(2), currency: 'RUB' },
-              vat_code: 1,
-            },
-          ],
-        },
-      })
+      body: JSON.stringify(body),
     });
-
+    const responseText = await response.text();
+    console.log('Yookassa response:', responseText);
     if (!response.ok) {
-      throw new Error(`Yookassa API error: ${response.statusText}`);
+      throw new Error(`Yookassa API error: ${response.statusText}, details: ${responseText}`);
     }
-    const result = await response.json();
+    const result = JSON.parse(responseText);
     console.log(`Payment created for user ${userId}: ${JSON.stringify(result)}`);
     return result;
   } catch (error) {
@@ -60,11 +63,12 @@ const checkPayment = async (paymentId) => {
         'Authorization': `Basic ${Buffer.from(`${SHOP_ID}:${SECRET_KEY}`).toString('base64')}`,
       },
     });
-
+    const responseText = await response.text();
+    console.log('Yookassa check payment response:', responseText);
     if (!response.ok) {
-      throw new Error(`Yookassa API error: ${response.statusText}`);
+      throw new Error(`Yookassa API error: ${response.statusText}, details: ${responseText}`);
     }
-    const result = await response.json();
+    const result = JSON.parse(responseText);
     console.log(`Payment check result for paymentId ${paymentId}: ${JSON.stringify(result)}`);
     return result;
   } catch (error) {
