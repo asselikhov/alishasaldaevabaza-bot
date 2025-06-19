@@ -24,19 +24,25 @@ mongoose.connect(process.env.MONGODB_URI)
       console.log('Connected to MongoDB via Mongoose');
       try {
         console.log('Initializing MongoDB session storage...');
-        console.log('Mongoose connection state:', mongoose.connection.readyState); // 1 = connected
-        console.log('Checking if mongoose.connection.db exists:', !!mongoose.connection.db);
-
-        // Альтернативное подключение через MongoClient для сессий
-        const client = new MongoClient(process.env.MONGODB_URI);
+        // Подключение через MongoClient для сессий
+        const client = new MongoClient(process.env.MONGODB_URI, {
+          useNewUrlParser: true,
+          useUnifiedTopology: true,
+        });
         await client.connect();
         console.log('Connected to MongoDB via MongoClient');
-        db = client.db(process.env.MONGODB_DBNAME || mongoose.connection.db.name);
+        db = client.db(process.env.MONGODB_DBNAME || 'test');
         console.log('MongoDB database name:', db.databaseName);
+
+        // Проверка доступности метода collection
+        console.log('Checking if db.collection exists:', typeof db.collection === 'function');
+        if (typeof db.collection !== 'function') {
+          throw new Error('db.collection is not a function');
+        }
 
         bot.use(session({
           collectionName: 'sessions',
-          connection: db, // Используем db из MongoClient
+          database: db, // Используем db из MongoClient
         }));
         console.log('MongoDB session storage initialized');
 
@@ -67,7 +73,7 @@ mongoose.connect(process.env.MONGODB_URI)
       bot.use(telegrafSession());
     });
 
-// Инициализация бота
+// Икидение бота
 console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present.' : 'Token missing!');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.catch((err, ctx) => {
