@@ -29,11 +29,12 @@ mongoose.connect(process.env.MONGODB_URI)
       console.log('Connected to MongoDB');
       // Настройка хранилища сессий после успешного подключения к MongoDB
       try {
+        // Для версии 1.3.2 синтаксис отличается
         const sessionMiddleware = sessionMongo({
-          uri: process.env.MONGODB_URI,
+          database: process.env.MONGODB_URI,
           collectionName: 'sessions',
         });
-        bot.use(sessionMiddleware);
+        bot.use(sessionMiddleware.middleware());
         console.log('MongoDB session storage initialized');
       } catch (err) {
         console.error('Failed to initialize MongoDB session storage:', err.stack);
@@ -578,7 +579,7 @@ app.post('/webhook/yookassa', async (req, res) => {
               filename: `payment_${object.id}.txt`,
             },
             {
-              caption: `Документ оплаты для user_${user.userId}`,
+              caption: `Document оплаты для user_${user.userId}`,
             }
         );
         const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.split('-100')[1]}/${paymentDoc.message_id}`;
@@ -625,7 +626,7 @@ app.post('/webhook/yookassa', async (req, res) => {
 });
 
 // Запуск сервера
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 console.log(`Starting server on port ${PORT}`);
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
