@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const LocalSession = require('telegraf-session-local');
+const MongoSession = require('telegraf-session-mongodb');
 require('dotenv').config();
 
 const app = express();
@@ -16,18 +16,19 @@ app.use((req, res, next) => {
   next();
 });
 
-// Инициализация локального хранилища сессий
-const localSession = new LocalSession({ database: 'sessions.json' });
-
-// Подключение к MongoDB
+// Подключение к MongoDB и настройка сессий
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => {
+    .then(async () => {
       console.log('Connected to MongoDB');
       try {
-        bot.use(localSession.middleware());
-        console.log('Local session storage initialized');
+        const mongoSession = new MongoSession({
+          collectionName: 'sessions',
+          connection: mongoose.connection,
+        });
+        bot.use(mongoSession.middleware());
+        console.log('MongoDB session storage initialized');
       } catch (err) {
-        console.error('Failed to initialize local session storage:', err.message);
+        console.error('Failed to initialize MongoDB session storage:', err.message);
         console.warn('Falling back to in-memory session storage');
         bot.use(session());
       }
@@ -164,7 +165,7 @@ bot.start(async (ctx) => {
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте снова позже или свяжитесь с нами.');
+    await ctx.reply('Произошла ошибка. Попробуй снова позже или свяжитесь с нами.');
   }
 });
 
@@ -407,7 +408,7 @@ bot.on('text', async (ctx) => {
 // Функция обработки платежа
 async function processPayment(ctx, userId, chatId) {
   try {
-    console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
+    console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? enero de 2025 : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
       const now = Math.floor(Date.now() / 1000);
