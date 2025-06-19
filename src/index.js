@@ -22,11 +22,21 @@ mongoose.connect(process.env.MONGODB_URI)
       console.log('Connected to MongoDB');
       try {
         console.log('Initializing MongoDB session storage...');
+        console.log('Mongoose connection state:', mongoose.connection.readyState); // 1 = connected
+        console.log('Checking if mongoose.connection.db exists:', !!mongoose.connection.db);
+        if (!mongoose.connection.db) {
+          throw new Error('mongoose.connection.db is undefined');
+        }
         bot.use(session({
           collectionName: 'sessions',
-          connection: mongoose.connection.db,
+          connection: mongoose.connection.db, // Используем mongoose.connection.db
         }));
         console.log('MongoDB session storage initialized');
+
+        // Попытка создать коллекцию sessions, если она не существует
+        await mongoose.connection.db.createCollection('sessions').catch(err => {
+          console.log('Collection "sessions" already exists or creation not needed:', err.message);
+        });
 
         // Добавление TTL-индекса для автоматической очистки сессий (7 дней)
         await mongoose.connection.db.collection('sessions').createIndex(
@@ -34,6 +44,10 @@ mongoose.connect(process.env.MONGODB_URI)
             { expireAfterSeconds: 7 * 24 * 60 * 60 } // 7 дней
         );
         console.log('TTL index created for sessions collection');
+
+        // Отладка: проверка содержимого коллекции sessions
+        const sessionCount = await mongoose.connection.db.collection('sessions').countDocuments();
+        console.log(`Sessions collection contains ${sessionCount} documents`);
       } catch (err) {
         console.error('Failed to initialize MongoDB session storage:', err.stack);
         console.warn('Falling back to in-memory session storage');
@@ -52,6 +66,12 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.catch((err, ctx) => {
   console.error('Telegraf global error for update', ctx.update, ':', err.stack);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
+});
+
+// Отладка сессий
+bot.use((ctx, next) => {
+  console.log(`[${new Date().toISOString()}] Session data for user ${ctx.from?.id}:`, JSON.stringify(ctx.session));
+  return next();
 });
 
 // Схема пользователя
