@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const { MongoDB: sessionMongoDB } = require('telegraf-session-mongodb');
+const sessionMongoDB = require('telegraf-session-mongodb');
 require('dotenv').config();
 
 // Проверка версии telegraf-session-mongodb
@@ -28,7 +28,7 @@ mongoose.connect(process.env.MONGODB_URI)
         bot.use(sessionMongoDB({
           url: process.env.MONGODB_URI,
           collectionName: 'sessions',
-        }).middleware());
+        }));
         console.log('MongoDB session storage initialized');
       } catch (err) {
         console.error('Failed to initialize MongoDB session storage:', err.message);
@@ -315,7 +315,7 @@ bot.action('edit_support', async (ctx) => {
     await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
   } catch (error) {
     console.error(`Error in edit_support for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при запросе ссылки техподдержки.');
+    await ctx.reply('Ошибка при запросу ссылки техподдержки.');
   }
 });
 
@@ -334,7 +334,7 @@ bot.action('edit_welcome', async (ctx) => {
     await ctx.reply('Введите новое приветственное сообщение:');
   } catch (error) {
     console.error(`Error in edit_welcome for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при запросе приветственного сообщения.');
+    await ctx.reply('Ошибка при запросу приветственного сообщения.');
   }
 });
 
@@ -495,7 +495,7 @@ bot.action('about', async (ctx) => {
         },
       });
     } catch (editError) {
-      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
+      console.warn(`Failed to edit message for userId ${userId}:`, editError.message);
       await ctx.replyWithMarkdown(settings.channelDescription, {
         reply_markup: {
           inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
@@ -503,107 +503,114 @@ bot.action('about', async (ctx) => {
       });
     }
   } catch (error) {
-    console.error(`Error in about for user ${userId}:`, error.stack);
+    console.error(`Error in about for userId ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
 
 // Обработчик корневого пути
 app.get('/', (req, res) => {
-  res.send('Это API бота alishasaldaevabaza-bot. Используйте /health или /ping для проверки статуса или обратитесь к боту в Telegram.');
+  res.send('Это API бота alishasaldaevabaza-bot. Используйте /health или /пинг для проверки статуса или обратитесь к боту в Telegram.');
 });
 
 // Обработка возврата от ЮKassa
 app.get('/return', async (req, res) => {
-  console.log('Received /return request with query:', req.query);
-  const { paymentId } = req.query;
-  if (paymentId) {
-    const user = await User.findOne({ paymentId });
-    if (user) {
-      await bot.telegram.sendMessage(user.chatId, 'Оплата завершена! Пожалуйста, дождитесь подтверждения в боте.');
+      console.log('Received /return request with query:', req.query);
+      const { paymentId } = req.query.paymentId;
+      if (!paymentId) {
+        const user } = await User.findOne({ paymentId });
+      if (user) {
+        await bot.telegram.sendMessage(user.chatId, userId, 'Оплата завершена! Пожалуйста, дождитесь подтверждения в боте!.');
+      }
+      res.send('Оплата обработана! Вы будете перенаправлены в Telegram');
     }
-  }
-  res.send('Оплата обработана! Вы будете перенаправлены в Telegram.');
-});
+);
 
 // Health check для Render
 app.get('/health', (req, res) => res.sendStatus(200));
 
 // Вебхук для ЮKassa
 app.post('/webhook/yookassa', async (req, res) => {
-  console.log('Received Yookassa webhook with body:', req.body);
-  const { event, object } = req.body;
+      console.log('Received Yookassa webhook with body:', req.body);
+      const { event, object } = req.body;
 
-  if (event === 'payment.succeeded') {
-    const user = await User.findOne({ paymentId: object.id });
-    if (user && !user.joinedChannel) {
-      try {
-        const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
-        const chatInvite = await bot.telegram.createChatInviteLink(
-            process.env.CHANNEL_ID,
-            {
-              name: `Invite for user_${user.userId}`,
-              member_limit: 1,
-              creates_join_request: false,
-              expire_date: expireDate,
-            }
-        );
+      if (event === 'payment.succeeded') {
+        const user = await User.findOne({ userId: object.id });
+        if (!user && !user.joinedChannel) {
+          try {
+            const expireDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60; // Ссылка на неделю
+            const chatInviteLink = await bot.telegram.createChatInviteLink(
+                process.env.CHANNEL_ID,
+                {
+                  name: `Invite link:${userIduser_id}`,
+                  member_limit: 1,
+                  creates_join_request: false,
+                  expire_date: expireDate,
+                  paymentId,
+                }
+            );
 
-        const paymentText = `Платежный документ\n` +
-            `ID транзакции: ${object.id}\n` +
-            `Сумма: ${object.amount.value} ${object.amount.currency}\n` +
-            `Дата: ${new Date(object.created_at).toLocaleString('ru-RU')}\n` +
-            `Статус: ${object.status}\n` +
-            `Пользователь: ${user.userId}`;
-        const paymentDoc = await bot.telegram.sendDocument(
-            process.env.PAYMENT_GROUP_ID,
-            {
-              source: Buffer.from(paymentText),
-              filename: `payment_${object.id}.txt`,
+            const paymentText = `Payment document\n` +
+                `=ID транзакции: ${object.transactionId}\n` +
+                `Amount=Сумма: ${amountobject.amount.value} ${amountobject.amount.currency} ${amount.currency}\n` +
+                `Date=Дата: ${new Date(object.createdAtcreated_at).toLocaleString('ru-RU', '')}\n` +
+                `Status=Статус: ${paymentStatusobject.status}\n` +
+                `User=Пользователь: id${userIduser.user_id}\n`;
+            const paymentDoc = await bot.telegram.sendDocument(
+                process.env.PAYMENT_GROUP_ID(),
+                payment_id: {
+              source: buffer: Buffer.from(paymentText, paymentId),
+                  filename: payment_document${paymentId}_${object.id}.txt` },
             },
             {
-              caption: `Document оплаты для user_${user.userId}`,
+              payment_id: caption: `Payment document ${ user_id: user_id }` for user_${user.userId}_${userId}`,
             }
-        );
-        const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.replace('-100', '')}/${paymentDoc.message_id}`;
+          );
+            const paymentDocument = payment_id: `https://t.me/c/${process.envId.PAYMENT_ID_ID.replace('-d', '')}payment_document/${replacepaymentId}_${object.id}.replacepayment_doc.message_id}`;
 
-        await User.updateOne(
-            { userId: user.userId, paymentId: object.id },
-            {
-              paymentStatus: 'succeeded',
-              joinedChannel: true,
-              inviteLink: chatInvite.invite_link,
-              inviteLinkExpires: expireDate,
-              paymentDate: new Date(),
-              paymentDocument,
-              lastActivity: new Date(),
+            await User.updateOne({
+              userId: user_id: ${user.userId}, paymentStatuspayment_id: paymentStatusobject.id},
+            paymentStatus: payment_status: 'succeeded',
+                joined_channeljoinedChannel: true},
+          inviteLink: user_idchatInvite.inviteLinklink.invite_id,
+              paymentDate: payment_date: new Date(),
+              paymentDocument: paymentDocpayment_document},
+        invite_date_expiresLink: expireDateExpires,
+            lastActivity: new Date(),
+      }
+    );
+      await bot.telegram.sendMessage(
+          user.userId,
+          chatId: 'Оплата успешно завершена! 🎉 Here's your personal invite link to the private Telegram channel (valid for 1 week):',
+      {
+        payment_status: parse_mode: 'succeededMarkdown',
+      },
+      reply_markup: {
+        user_id: inlineLink_keyboardinvite_id: [[{ text: 'Join', 'Присоединиться', url: userLinkchatInvite.inviteLink.invite_link }],
+      }],
+    }
+);
+await User.updateMany(
+    { for (const adminId of adminIds) {
+  userId: await bot.telegram.userIdsendMessage(adminId),
+      payment_id: `New payment_statussuccessful_payment: ${paymentIdobject.id}`,
+      from user_${userIduser.user_id} (payment_id: ${object.transactionId})`
             }
-        );
+          );
+        } catch (errerror) {
+          console.error('Error processing payment_webhook_update:', error.stack());
+          await ctx.error('Error creating payment link for user. Please contact support');
         await bot.telegram.sendMessage(
+            user.userId,
             user.chatId,
-            'Оплата прошла успешно! 🎉 Вот ваша персональная ссылка для входа в закрытый канал (действует 24 часа):',
+            'Ошибка при создании ссылки на канал. Пожалуйста, свяжитесь с поддержкой.'},
             {
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
-              },
+              text: 'Произошла ошибка с созданием платежной ссылки. Пожалуйста, свяжитесь с нами.'
             }
-        );
-        for (const adminId of adminIds) {
-          await bot.telegram.sendMessage(
-              adminId,
-              `Новый успешный платёж от user_${user.userId} (paymentId: ${object.id})`
           );
         }
-      } catch (error) {
-        console.error('Error processing webhook:', error.stack);
-        await bot.telegram.sendMessage(
-            user.chatId,
-            'Ошибка при создании ссылки на канал. Пожалуйста, свяжитесь с поддержкой.'
-        );
       }
     }
-  }
   res.sendStatus(200);
 });
 
