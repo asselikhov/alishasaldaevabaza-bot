@@ -171,7 +171,7 @@ bot.action('admin_panel', async (ctx) => {
           [{ text: 'Редактировать', callback_data: 'edit' }],
           [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
           [{ text: 'Статистика', callback_data: 'stats' }],
-          [{ text: 'Назад', callback_data: 'back' }],
+          [{ text: '↩️ Назад', callback_data: 'back' }],
         ],
       },
     });
@@ -181,7 +181,7 @@ bot.action('admin_panel', async (ctx) => {
   }
 });
 
-// Обработчик кнопки "Назад"
+// Обработчик кнопки "↩️ Назад"
 bot.action('back', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
@@ -223,7 +223,7 @@ bot.action('back', async (ctx) => {
             [{ text: 'Редактировать', callback_data: 'edit' }],
             [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
             [{ text: 'Статистика', callback_data: 'stats' }],
-            [{ text: 'Назад', callback_data: 'back' }],
+            [{ text: '↩️ Назад', callback_data: 'back' }],
           ],
         },
       });
@@ -254,7 +254,7 @@ bot.action('edit', async (ctx) => {
           [{ text: 'О канале', callback_data: 'edit_channel' }],
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
           [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
-          [{ text: 'Назад', callback_data: 'back' }],
+          [{ text: '↩️ Назад', callback_data: 'back' }],
         ],
       },
     });
@@ -487,7 +487,7 @@ bot.action('stats', async (ctx) => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Назад', callback_data: 'back' }],
+          [{ text: '↩️ Назад', callback_data: 'back' }],
         ],
       },
     });
@@ -565,14 +565,14 @@ bot.action('about', async (ctx) => {
       await ctx.editMessageText(settings.channelDescription, {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [[{ text: 'Назад', callback_data: 'back' }]],
+          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
         },
       });
     } catch (editError) {
       console.warn(`Failed to edit message for user ${userId}:`, editError.message);
       await ctx.replyWithMarkdown(settings.channelDescription, {
         reply_markup: {
-          inline_keyboard: [[{ text: 'Назад', callback_data: 'back' }]],
+          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
         },
       });
     }
