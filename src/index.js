@@ -24,15 +24,13 @@ app.use((req, res, next) => {
 });
 
 // Подключение к MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
       console.log('Connected to MongoDB');
       // Настройка хранилища сессий после успешного подключения к MongoDB
       try {
-        const sessionMiddleware = sessionMongo(process.env.MONGODB_URI, {
+        const sessionMiddleware = sessionMongo({
+          uri: process.env.MONGODB_URI,
           collectionName: 'sessions',
         });
         bot.use(sessionMiddleware);
@@ -451,7 +449,7 @@ async function processPayment(ctx, userId, chatId) {
         email: user.email,
       }),
       new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 5000)
+          setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 15000)
       )
     ]);
 

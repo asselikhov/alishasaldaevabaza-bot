@@ -28,7 +28,7 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
             amount: { value: amount.toFixed(2), currency: 'RUB' },
             vat_code: 2,
             payment_subject: 'service',
-            payment_method: 'full_payment',
+            // Удален параметр payment_method, так как он вызывал ошибку
           },
         ],
       },
@@ -44,7 +44,7 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
       body: JSON.stringify(body),
     });
     const responseText = await response.text();
-    console.log('Yookassa response:', responseText);
+    console.log('Yookassa response status:', response.status, 'body:', responseText);
     if (!response.ok) {
       throw new Error(`Yookassa API error: ${response.statusText}, details: ${responseText}`);
     }
@@ -67,7 +67,7 @@ const checkPayment = async (paymentId) => {
       },
     });
     const responseText = await response.text();
-    console.log('Yookassa check payment response:', responseText);
+    console.log('Yookassa check payment response status:', response.status, 'body:', responseText);
     if (!response.ok) {
       throw new Error(`Yookassa API error: ${response.statusText}, details: ${responseText}`);
     }
