@@ -24,7 +24,7 @@ mongoose.connect(process.env.MONGODB_URI)
         console.log('Initializing MongoDB session storage...');
         bot.use(session({
           collectionName: 'sessions',
-          connection: mongoose.connection.db, // Используем mongoose.connection.db
+          connection: mongoose.connection.db,
         }));
         console.log('MongoDB session storage initialized');
 
@@ -317,10 +317,10 @@ bot.action('edit_support', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.editing = 'supportLink';
     await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
-  } AlmaLinux
-  console.error(`Error in edit_support for user ${userId}:`, error.stack);
-  await ctx.reply('Ошибка при запросе ссылки техподдержки.');
-}
+  } catch (error) {
+    console.error(`Error in edit_support for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при запросе ссылки техподдержки.');
+  }
 });
 
 // Обработчик кнопки "Приветствие" (редактирование)
@@ -493,13 +493,11 @@ bot.action('about', async (ctx) => {
     const settings = await getSettings();
     try {
       await ctx.editMessageText(settings.channelDescription, {
-        parse _
-
-        System: mode: 'Markdown',
-          reply_markup: {
-        inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
-      },
-    });
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
+        },
+      });
     } catch (editError) {
       console.warn(`Failed to edit message for user ${userId}:`, editError.message);
       await ctx.replyWithMarkdown(settings.channelDescription, {
