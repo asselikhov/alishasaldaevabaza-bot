@@ -1,5 +1,6 @@
 const { Telegraf, session: telegrafSession } = require('telegraf');
 const mongoose = require('mongoose');
+const { MongoClient } = require('mongodb');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
@@ -17,36 +18,42 @@ app.use((req, res, next) => {
 });
 
 // Подключение к MongoDB и настройка сессий
+let db;
 mongoose.connect(process.env.MONGODB_URI)
     .then(async () => {
-      console.log('Connected to MongoDB');
+      console.log('Connected to MongoDB via Mongoose');
       try {
         console.log('Initializing MongoDB session storage...');
         console.log('Mongoose connection state:', mongoose.connection.readyState); // 1 = connected
         console.log('Checking if mongoose.connection.db exists:', !!mongoose.connection.db);
-        if (!mongoose.connection.db) {
-          throw new Error('mongoose.connection.db is undefined');
-        }
+
+        // Альтернативное подключение через MongoClient для сессий
+        const client = new MongoClient(process.env.MONGODB_URI);
+        await client.connect();
+        console.log('Connected to MongoDB via MongoClient');
+        db = client.db(process.env.MONGODB_DBNAME || mongoose.connection.db.name);
+        console.log('MongoDB database name:', db.databaseName);
+
         bot.use(session({
           collectionName: 'sessions',
-          connection: mongoose.connection.db, // Используем mongoose.connection.db
+          connection: db, // Используем db из MongoClient
         }));
         console.log('MongoDB session storage initialized');
 
-        // Попытка создать коллекцию sessions, если она не существует
-        await mongoose.connection.db.createCollection('sessions').catch(err => {
+        // Попытка создать коллекцию sessions
+        await db.createCollection('sessions').catch(err => {
           console.log('Collection "sessions" already exists or creation not needed:', err.message);
         });
 
         // Добавление TTL-индекса для автоматической очистки сессий (7 дней)
-        await mongoose.connection.db.collection('sessions').createIndex(
+        await db.collection('sessions').createIndex(
             { "expireAt": 1 },
             { expireAfterSeconds: 7 * 24 * 60 * 60 } // 7 дней
         );
         console.log('TTL index created for sessions collection');
 
         // Отладка: проверка содержимого коллекции sessions
-        const sessionCount = await mongoose.connection.db.collection('sessions').countDocuments();
+        const sessionCount = await db.collection('sessions').countDocuments();
         console.log(`Sessions collection contains ${sessionCount} documents`);
       } catch (err) {
         console.error('Failed to initialize MongoDB session storage:', err.stack);
