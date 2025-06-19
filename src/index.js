@@ -1,9 +1,9 @@
-const { Telegraf, session } = require('telegraf');
+const { Telegraf, session: telegrafSession } = require('telegraf');
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const telegrafSessionMongoDB = require('telegraf-session-mongodb'); // Импорт всего модуля для отладки
+const { session } = require('telegraf-session-mongodb'); // Используем функцию session
 require('dotenv').config();
 
 const app = express();
@@ -21,14 +21,11 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(async () => {
       console.log('Connected to MongoDB');
       try {
-        console.log('telegraf-session-mongodb module:', telegrafSessionMongoDB);
-        const MongoSession = telegrafSessionMongoDB.MongoSession || telegrafSessionMongoDB; // Пробуем оба варианта
-        console.log('MongoSession:', MongoSession);
-        const mongoSession = new MongoSession({
+        console.log('Initializing MongoDB session storage...');
+        bot.use(session({
           collectionName: 'sessions',
           connection: mongoose.connection,
-        });
-        bot.use(mongoSession.middleware());
+        }));
         console.log('MongoDB session storage initialized');
 
         // Добавление TTL-индекса для автоматической очистки сессий (7 дней)
@@ -40,13 +37,13 @@ mongoose.connect(process.env.MONGODB_URI)
       } catch (err) {
         console.error('Failed to initialize MongoDB session storage:', err.stack);
         console.warn('Falling back to in-memory session storage');
-        bot.use(session());
+        bot.use(telegrafSession());
       }
     })
     .catch(err => {
       console.error('MongoDB connection error:', err.stack);
       console.warn('Falling back to in-memory session storage');
-      bot.use(session());
+      bot.use(telegrafSession());
     });
 
 // Инициализация бота
@@ -175,7 +172,7 @@ bot.start(async (ctx) => {
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте снова или свяжитесь с нами.');
+    await ctx.reply('Произошла ошибка. Попробуй снова или свяжитесь с нами.');
   }
 });
 
