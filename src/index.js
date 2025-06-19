@@ -3,15 +3,12 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const sessionMongo = require('telegraf-session-mongodb');
+const { session: sessionMongo } = require('telegraf-session-mongodb');
 require('dotenv').config();
 
 // Проверка версии telegraf-session-mongodb
 const sessionMongoPkg = require('telegraf-session-mongodb/package.json');
 console.log(`Using telegraf-session-mongodb version: ${sessionMongoPkg.version}`);
-if (sessionMongoPkg.version !== '1.0.3') {
-  console.warn('Expected telegraf-session-mongodb@1.0.3, but found', sessionMongoPkg.version);
-}
 
 const app = express();
 app.use(express.json());
@@ -29,12 +26,11 @@ mongoose.connect(process.env.MONGODB_URI)
       console.log('Connected to MongoDB');
       // Настройка хранилища сессий после успешного подключения к MongoDB
       try {
-        // Для версии 1.3.2 синтаксис отличается
-        const sessionMiddleware = sessionMongo({
+        // Синтаксис для telegraf-session-mongodb@1.3.2
+        bot.use(sessionMongo({
           database: process.env.MONGODB_URI,
           collectionName: 'sessions',
-        });
-        bot.use(sessionMiddleware.middleware());
+        }).middleware());
         console.log('MongoDB session storage initialized');
       } catch (err) {
         console.error('Failed to initialize MongoDB session storage:', err.stack);
