@@ -32,6 +32,7 @@ const UserSchema = new mongoose.Schema({
   firstName: String,
   username: String,
   phoneNumber: String,
+  email: String, // Добавлено поле для email
   paymentDate: Date,
   paymentDocument: { type: String, default: null },
   lastActivity: { type: Date, default: Date.now },
@@ -321,16 +322,33 @@ bot.action('edit_welcome', async (ctx) => {
   }
 });
 
-// Обработчик текстового ввода для редактирования
+// Обработчик текстового ввода для редактирования и email
 bot.on('text', async (ctx) => {
   const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId) || !ctx.session?.editing) {
-    return;
-  }
+  ctx.session = ctx.session || {};
 
   try {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     const text = ctx.message.text.trim();
+
+    // Обработка ввода email для оплаты
+    if (ctx.session.waitingForEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(text)) {
+        return ctx.reply('Пожалуйста, введите действительный email (например, user@example.com):');
+      }
+      await User.findOneAndUpdate({ userId }, { email: text });
+      ctx.session.waitingForEmail = false;
+      await ctx.reply('Email сохранён! Перехожу к созданию платежа...');
+      await processPayment(ctx, userId, String(ctx.chat.id));
+      return;
+    }
+
+    // Обработка редактирования админом
+    if (!adminIds.includes(userId) || !ctx.session.editing) {
+      return;
+    }
+
     if (ctx.session.editing === 'channelDescription') {
       if (text.length < 10) {
         return ctx.reply('Описание должно быть не короче 10 символов. Попробуйте снова:');
@@ -374,137 +392,9 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// Обработчик кнопки "Выгрузить подписчиков"
-bot.action('export_subscribers', async (ctx) => {
-  await ctx.answerCbQuery();
-  const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
-    return ctx.reply('Доступ запрещён.');
-  }
-
+// Функция обработки платежа
+async function processPayment(ctx, userId, chatId) {
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    await ctx.reply('Начинаю выгрузку подписчиков. Это может занять время. Я уведомлю вас, когда файл будет готов.');
-    const subscribers = await User.find({ paymentStatus: 'succeeded', joinedChannel: true });
-
-    if (!subscribers.length) {
-      return ctx.reply('Нет оплаченных подписчиков для выгрузки.');
-    }
-
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Subscribers');
-
-    worksheet.columns = [
-      { header: 'Telegram ID', key: 'userId', width: 20 },
-      { header: 'Имя', key: 'firstName', width: 20 },
-      { header: 'Telegram-имя', key: 'username', width: 20 },
-      { header: 'Телефон', key: 'phoneNumber', width: 15 },
-      { header: 'Дата оплаты', key: 'paymentDate', width: 20 },
-      { header: 'Платежный документ', key: 'paymentDocument', width: 30 },
-    ];
-
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFADD8E6' } };
-    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-
-    subscribers.forEach((sub) => {
-      worksheet.addRow({
-        userId: sub.userId,
-        firstName: sub.firstName || 'Не указано',
-        username: sub.username ? `@${sub.username}` : 'Не указано',
-        phoneNumber: sub.phoneNumber || 'Не указано',
-        paymentDate: sub.paymentDate ? sub.paymentDate.toLocaleString('ru-RU') : 'Не указано',
-        paymentDocument: sub.paymentDocument || 'Не указано',
-      });
-    });
-
-    worksheet.columns.forEach((column) => {
-      let maxLength = 0;
-      column.eachCell({ includeEmpty: true }, (cell) => {
-        const columnLength = cell.value ? cell.value.toString().length : 10;
-        if (columnLength > maxLength) {
-          maxLength = columnLength;
-        }
-      });
-      column.width = maxLength < 10 ? 10 : maxLength;
-    });
-
-    const buffer = await workbook.xlsx.write();
-    const fileName = `Subscribers_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    await ctx.replyWithDocument(
-        { source: buffer, filename: fileName },
-        { caption: 'Список оплаченных подписчиков' }
-    );
-  } catch (error) {
-    console.error(`Error exporting subscribers for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при выгрузке подписчиков. Попробуйте позже.');
-  }
-});
-
-// Обработчик кнопки "Статистика"
-let cachedStats = null;
-let lastStatsUpdate = 0;
-const statsCacheTime = 60000; // 1 минута
-
-bot.action('stats', async (ctx) => {
-  await ctx.answerCbQuery();
-  const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
-    return ctx.reply('Доступ запрещён.');
-  }
-
-  try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
-    ctx.session = ctx.session || {};
-    ctx.session.navHistory = ctx.session.navHistory || [];
-    ctx.session.navHistory.push('admin_panel'); // Добавляем admin_panel в историю
-    const now = Date.now();
-    if (!cachedStats || now - lastStatsUpdate > statsCacheTime) {
-      const totalUsers = await User.countDocuments();
-      const paidSubscribers = await User.countDocuments({ paymentStatus: 'succeeded', joinedChannel: true });
-      const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
-      const recentVisitors = await User.find({ lastActivity: { $gte: oneDayAgo } }).select('userId firstName username');
-
-      cachedStats = { totalUsers, paidSubscribers, recentVisitors };
-      lastStatsUpdate = now;
-    }
-
-    let visitorsList = 'Список посетителей за последние 24 часа:\n';
-    if (cachedStats.recentVisitors.length === 0) {
-      visitorsList += 'Нет активности за последние сутки';
-    } else {
-      visitorsList += cachedStats.recentVisitors.map((visitor, index) =>
-          `${index + 1}. ${visitor.firstName || 'Не указано'} (@${visitor.username || 'без username'}, ID: ${visitor.userId})`
-      ).join('\n');
-    }
-
-    const statsMessage = `Статистика бота:\n` +
-        `➖➖➖➖➖➖➖➖➖➖➖\n` +
-        `Пользователей: ${cachedStats.totalUsers} | Подписчиков: ${cachedStats.paidSubscribers}\n\n` +
-        `${visitorsList}`;
-
-    await ctx.editMessageText(statsMessage, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '↩️ Назад', callback_data: 'back' }],
-        ],
-      },
-    });
-  } catch (error) {
-    console.error(`Error in stats for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
-  }
-});
-
-// Обработчик кнопки "Купить"
-bot.action('buy', async (ctx) => {
-  await ctx.answerCbQuery();
-  const userId = String(ctx.from.id);
-  const chatId = String(ctx.chat.id);
-
-  try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
@@ -530,6 +420,7 @@ bot.action('buy', async (ctx) => {
         paymentId,
         userId,
         returnUrl: process.env.RETURN_URL,
+        email: user.email,
       }),
       new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 5000)
@@ -551,6 +442,27 @@ bot.action('buy', async (ctx) => {
   } catch (error) {
     console.error(`Payment error for user ${userId}:`, error.message);
     await ctx.reply('Произошла ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
+  }
+}
+
+// Обработчик кнопки "Купить"
+bot.action('buy', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+  const chatId = String(ctx.chat.id);
+
+  try {
+    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    const user = await User.findOne({ userId });
+    if (!user.email) {
+      ctx.session.waitingForEmail = true;
+      await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты (например, user@example.com):');
+      return;
+    }
+    await processPayment(ctx, userId, chatId);
+  } catch (error) {
+    console.error(`Error in buy for user ${userId}:`, error.stack);
+    await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
 

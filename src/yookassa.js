@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 const SHOP_ID = process.env.YOOKASSA_SHOP_ID;
 const SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
-const createPayment = async ({ amount, description, paymentId, userId, returnUrl }) => {
+const createPayment = async ({ amount, description, paymentId, userId, returnUrl, email }) => {
   try {
     console.log(`Creating payment for user ${userId}, paymentId: ${paymentId}`);
     const body = {
@@ -20,13 +20,15 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
       description,
       metadata: { userId, paymentId },
       receipt: {
-        customer: { email: 'customer@example.com' },
+        customer: { email: email || 'default@example.com' }, // Используем переданный email
         items: [
           {
             description,
             quantity: 1,
             amount: { value: amount.toFixed(2), currency: 'RUB' },
-            vat_code: 1,
+            vat_code: 2, // Без НДС
+            payment_subject: 'service', // Тип услуги
+            payment_method: 'full_payment', // Полная оплата
           },
         ],
       },
