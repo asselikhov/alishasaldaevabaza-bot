@@ -24,7 +24,6 @@ app.use((req, res, next) => {
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
       console.log('Connected to MongoDB');
-      // Настройка хранилища сессий
       try {
         bot.use(sessionMongoDB({
           url: process.env.MONGODB_URI,
