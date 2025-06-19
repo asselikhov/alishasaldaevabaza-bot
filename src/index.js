@@ -6,6 +6,13 @@ const ExcelJS = require('exceljs');
 const sessionMongo = require('telegraf-session-mongodb');
 require('dotenv').config();
 
+// Проверка версии telegraf-session-mongodb
+const sessionMongoPkg = require('telegraf-session-mongodb/package.json');
+console.log(`Using telegraf-session-mongodb version: ${sessionMongoPkg.version}`);
+if (sessionMongoPkg.version !== '1.0.3') {
+  console.warn('Expected telegraf-session-mongodb@1.0.3, but found', sessionMongoPkg.version);
+}
+
 const app = express();
 app.use(express.json());
 
@@ -17,18 +24,27 @@ app.use((req, res, next) => {
 });
 
 // Подключение к MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
     .then(() => {
       console.log('Connected to MongoDB');
-      // Настройка хранилища сессий после подключения к MongoDB
-      const sessionMiddleware = sessionMongo(process.env.MONGODB_URI, {
-        collectionName: 'sessions',
-      });
-      bot.use(sessionMiddleware);
+      // Настройка хранилища сессий после успешного подключения к MongoDB
+      try {
+        const sessionMiddleware = sessionMongo(process.env.MONGODB_URI, {
+          collectionName: 'sessions',
+        });
+        bot.use(sessionMiddleware);
+        console.log('MongoDB session storage initialized');
+      } catch (err) {
+        console.error('Failed to initialize MongoDB session storage:', err.stack);
+        console.warn('Falling back to in-memory session storage');
+        bot.use(session());
+      }
     })
     .catch(err => {
       console.error('MongoDB connection error:', err.stack);
-      // Временное использование сессий в памяти при ошибке MongoDB
       console.warn('Falling back to in-memory session storage');
       bot.use(session());
     });
