@@ -23,11 +23,16 @@ mongoose.connect(process.env.MONGODB_URI)
       // Настройка хранилища сессий после подключения к MongoDB
       const sessionMiddleware = MongoDBSession({
         collectionName: 'sessions',
-        databaseName: mongoose.connection.db.databaseName,
+        uri: process.env.MONGODB_URI // Используем ту же строку подключения
       });
       bot.use(sessionMiddleware);
     })
-    .catch(err => console.error('MongoDB connection error:', err.stack));
+    .catch(err => {
+      console.error('MongoDB connection error:', err.stack);
+      // Временное использование сессий в памяти при ошибке MongoDB
+      console.warn('Falling back to in-memory session storage');
+      bot.use(session());
+    });
 
 // Инициализация бота
 console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
@@ -367,7 +372,7 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      await ctx.reply('Описание канала обновлено.');
+      await ctx.reply('Описание канала обновлено!');
     } else if (ctx.session.editing === 'supportLink') {
       let supportLink = text;
       if (supportLink.startsWith('@')) {
@@ -381,7 +386,7 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      await ctx.reply('Ссылка на техподдержку обновлена.');
+      await ctx.reply('Ссылка на техподдержку обновлена!');
     } else if (ctx.session.editing === 'welcomeMessage') {
       if (text.length < 10) {
         return ctx.reply('Приветственное сообщение должно быть не короче 10 символов. Попробуйте снова:');
@@ -392,7 +397,7 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      await ctx.reply('Приветственное сообщение обновлено.');
+      await ctx.reply('Приветственное сообщение обновлено!');
     }
   } catch (error) {
     console.error(`Error processing text input for user ${userId}:`, error.stack);

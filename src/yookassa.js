@@ -60,9 +60,10 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
 const checkPayment = async (paymentId) => {
   try {
     console.log(`Checking payment with paymentId: ${paymentId}`);
-    const response = await fetch(`https://api.yookassa.ru/v3/payments/${paymentId}`, {
+    const response = await fetch('https://api.yookassa.ru/v3/payments/${paymentId}', {
       headers: {
         'Authorization': `Basic ${Buffer.from(`${SHOP_ID}:${SECRET_KEY}`).toString('base64')}`,
+        'Content-Type': 'application/json',
       },
     });
     const responseText = await response.text();
