@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const MongoSession = require('telegraf-session-mongodb');
+const { MongoSession } = require('telegraf-session-mongodb'); // Исправлен импорт
 require('dotenv').config();
 
 const app = express();
@@ -21,14 +21,22 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(async () => {
       console.log('Connected to MongoDB');
       try {
+        console.log('Initializing MongoDB session storage...');
         const mongoSession = new MongoSession({
           collectionName: 'sessions',
           connection: mongoose.connection,
         });
         bot.use(mongoSession.middleware());
         console.log('MongoDB session storage initialized');
+
+        // Добавление TTL-индекса для автоматической очистки сессий (7 дней)
+        await mongoose.connection.db.collection('sessions').createIndex(
+            { "expireAt": 1 },
+            { expireAfterSeconds: 7 * 24 * 60 * 60 } // 7 дней
+        );
+        console.log('TTL index created for sessions collection');
       } catch (err) {
-        console.error('Failed to initialize MongoDB session storage:', err.message);
+        console.error('Failed to initialize MongoDB session storage:', err.stack);
         console.warn('Falling back to in-memory session storage');
         bot.use(session());
       }
@@ -71,7 +79,7 @@ const User = mongoose.model('User', UserSchema);
 const SettingsSchema = new mongoose.Schema({
   channelDescription: { type: String, default: 'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊' },
   supportLink: { type: String, default: 'https://t.me/Eagleshot' },
-  welcomeMessage: { type: String, default: 'ЙОУ ЧИКСЫ 😎\n\nЯ рада видеть вас здесь, лютые модницы 💅\n\nДержите меня семеро, потому что я вас научу пипэц как выгодно брать шмотьё🤭🤫\n\nЖду вас в своём клубе шаболятниц 🤝❤️' },
+  welcomeMessage: { type: String, default: 'ЙОУ ЧИКСЫ 😎\n\nЯ рада видеть вас здесь, лютые модницы 💅\n\nДержите меня семеро, потому что я вас научу пипэц как выгодно брать шмотьё!🤭🤫\n\nЖду вас в своём клубе шаболятниц 🤝❤️' },
 });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
@@ -165,7 +173,7 @@ bot.start(async (ctx) => {
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте снова позже или свяжитесь с нами.');
+    await ctx.reply('Произошла ошибка. Попробуй снова или свяжитесь с нами.');
   }
 });
 
