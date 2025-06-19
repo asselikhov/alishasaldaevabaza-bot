@@ -15,7 +15,7 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
       capture: true,
       confirmation: {
         type: 'redirect',
-        return_url: returnUrl || 'https://your-return-url.com',
+        return_url: returnUrl || 'https://alishasaldaevabaza-bot.onrender.com/return',
       },
       description,
       metadata: { userId, paymentId },
@@ -23,12 +23,12 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
         customer: { email: email || 'default@example.com' },
         items: [
           {
-            description,
+            description: description.substring(0, 128), // Ограничение длины описания
             quantity: 1,
             amount: { value: amount.toFixed(2), currency: 'RUB' },
             vat_code: 2,
             payment_subject: 'service',
-            // Удален параметр payment_method, так как он вызывал ошибку
+            tax_system_code: 1, // Общая система налогообложения
           },
         ],
       },
@@ -67,15 +67,15 @@ const checkPayment = async (paymentId) => {
       },
     });
     const responseText = await response.text();
-    console.log('Yookassa check payment response status:', response.status, 'body:', responseText);
+    console.log('Yookassa check payment response:', response.status, 'body:', responseText);
     if (!response.ok) {
       throw new Error(`Yookassa API error: ${response.statusText}, details: ${responseText}`);
     }
     const result = JSON.parse(responseText);
-    console.log(`Payment check result for paymentId ${paymentId}: ${JSON.stringify(result)}`);
+    console.log(`Payment retrieved for paymentId ${paymentId}: ${JSON.stringify(result)}`);
     return result;
   } catch (error) {
-    console.error(`Error checking payment with paymentId ${paymentId}:`, error.stack);
+    console.error(`Error checking payment for paymentId ${paymentId}:`, error.stack);
     throw error;
   }
 };

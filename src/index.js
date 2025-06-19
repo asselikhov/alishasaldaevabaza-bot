@@ -28,7 +28,7 @@ mongoose.connect(process.env.MONGODB_URI)
       try {
         // Синтаксис для telegraf-session-mongodb@1.3.2
         bot.use(sessionMongo({
-          database: process.env.MONGODB_URI,
+          url: process.env.MONGODB_URI,
           collectionName: 'sessions',
         }).middleware());
         console.log('MongoDB session storage initialized');
