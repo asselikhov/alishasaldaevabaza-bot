@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const { MongoSession } = require('telegraf-session-mongodb'); // Исправлен импорт
+const telegrafSessionMongoDB = require('telegraf-session-mongodb'); // Импорт всего модуля для отладки
 require('dotenv').config();
 
 const app = express();
@@ -21,7 +21,9 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(async () => {
       console.log('Connected to MongoDB');
       try {
-        console.log('Initializing MongoDB session storage...');
+        console.log('telegraf-session-mongodb module:', telegrafSessionMongoDB);
+        const MongoSession = telegrafSessionMongoDB.MongoSession || telegrafSessionMongoDB; // Пробуем оба варианта
+        console.log('MongoSession:', MongoSession);
         const mongoSession = new MongoSession({
           collectionName: 'sessions',
           connection: mongoose.connection,
@@ -79,7 +81,7 @@ const User = mongoose.model('User', UserSchema);
 const SettingsSchema = new mongoose.Schema({
   channelDescription: { type: String, default: 'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊' },
   supportLink: { type: String, default: 'https://t.me/Eagleshot' },
-  welcomeMessage: { type: String, default: 'ЙОУ ЧИКСЫ 😎\n\nЯ рада видеть вас здесь, лютые модницы 💅\n\nДержите меня семеро, потому что я вас научу пипэц как выгодно брать шмотьё!🤭🤫\n\nЖду вас в своём клубе шаболятниц 🤝❤️' },
+  welcomeMessage: { type: String, default: 'ЙОУ ЧИКСЫ 😎\n\nЯ рада видеть вас здесь, лютые модницы 💅\n\nДержите меня семеро, потому что я вас научу пипэц как выгодно брать шмотьё🤭🤫\n\nЖду вас в своём клубе шаболятниц 🤝❤️' },
 });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
@@ -173,7 +175,7 @@ bot.start(async (ctx) => {
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуй снова или свяжитесь с нами.');
+    await ctx.reply('Произошла ошибка. Попробуйте снова или свяжитесь с нами.');
   }
 });
 
