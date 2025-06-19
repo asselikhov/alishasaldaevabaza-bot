@@ -3,12 +3,8 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const sessionMongoDB = require('telegraf-session-mongodb');
+const LocalSession = require('telegraf-session-local');
 require('dotenv').config();
-
-// Проверка версии telegraf-session-mongodb
-const sessionMongoPkg = require('telegraf-session-mongodb/package.json');
-console.log(`Using telegraf-session-mongodb version: ${sessionMongoPkg.version}`);
 
 const app = express();
 app.use(express.json());
@@ -20,18 +16,18 @@ app.use((req, res, next) => {
   next();
 });
 
+// Инициализация локального хранилища сессий
+const localSession = new LocalSession({ database: 'sessions.json' });
+
 // Подключение к MongoDB
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
       console.log('Connected to MongoDB');
       try {
-        bot.use(sessionMongoDB({
-          url: process.env.MONGODB_URI,
-          collectionName: 'sessions',
-        }));
-        console.log('MongoDB session storage initialized');
+        bot.use(localSession.middleware());
+        console.log('Local session storage initialized');
       } catch (err) {
-        console.error('Failed to initialize MongoDB session storage:', err.message);
+        console.error('Failed to initialize local session storage:', err.message);
         console.warn('Falling back to in-memory session storage');
         bot.use(session());
       }
@@ -168,14 +164,14 @@ bot.start(async (ctx) => {
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте позже или свяжитесь с поддержкой.');
+    await ctx.reply('Произошла ошибка. Попробуй снова позже или свяжитесь с нами.');
   }
 });
 
 // Обработчик кнопки "👑 Админка"
 bot.action('admin_panel', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = String(ctx.from.id);
+  const userId = String(ctx.from.id());
   if (!adminIds.has(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
@@ -185,21 +181,21 @@ bot.action('admin_panel', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('start');
-    await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Редактировать', callback_data: 'edit' }],
-          [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
-          [{ text: 'Статистика', callback_data: 'stats' }],
-          [{ text: '↩️ Назад', callback_data: 'back' }],
-        ],
-      },
-    });
-  } catch (error) {
-    console.error(`Error in admin panel for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при открытии админ-панели.');
-  }
+    await ctx.editMessageText('Админка'Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+    parse_mode: 'Markdown',
+        reply_markup: {
+      inline_keyboard: [
+        [{ text: 'Редактировать', callback_data: 'edit' }],
+        [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
+        [{ text: 'Статистика', callback_data: 'stats' }],
+        [{ text: '↩️ Назад', callback_data: 'back' }],
+      ],
+    },
+  });
+} catch (error) {
+  console.error(`Error in admin panel for user ${userId}:`, error.stack);
+  await ctx.reply('Ошибка при открытии админ-панели.');
+}
 });
 
 // Обработчик кнопки "↩️ Назад"
