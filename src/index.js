@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const createMongoSession = require('telegraf-session-mongodb');
+const sessionMongo = require('telegraf-session-mongodb');
 require('dotenv').config();
 
 const app = express();
@@ -21,7 +21,7 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
       console.log('Connected to MongoDB');
       // Настройка хранилища сессий после подключения к MongoDB
-      const sessionMiddleware = createMongoSession(process.env.MONGODB_URI, {
+      const sessionMiddleware = sessionMongo(process.env.MONGODB_URI, {
         collectionName: 'sessions',
       });
       bot.use(sessionMiddleware);
