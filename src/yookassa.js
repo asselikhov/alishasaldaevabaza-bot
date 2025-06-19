@@ -29,6 +29,7 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
             amount: { value: amount.toFixed(2), currency: 'RUB' },
             vat_code: 2, // НДС 20%
             payment_subject: 'service', // Тип платежа
+            payment_mode: 'full_payment', // Признак способа расчёта
             tax_system_code: 1, // Общая система налогообложения
           },
         ],
