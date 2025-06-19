@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const MongoDBSession = require('telegraf-session-mongodb'); // Добавляем хранилище сессий
+const MongoDBSession = require('telegraf-session-mongodb');
 require('dotenv').config();
 
 const app = express();
@@ -18,15 +18,24 @@ app.use((req, res, next) => {
 
 // Подключение к MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
+    .then(() => {
+      console.log('Connected to MongoDB');
+      // Настройка хранилища сессий после подключения к MongoDB
+      const sessionMiddleware = MongoDBSession({
+        collectionName: 'sessions',
+        databaseName: mongoose.connection.db.databaseName,
+      });
+      bot.use(sessionMiddleware);
+    })
     .catch(err => console.error('MongoDB connection error:', err.stack));
 
-// Настройка хранилища сессий
-const sessionMiddleware = MongoDBSession({
-  collectionName: 'sessions',
-  databaseName: mongoose.connection.db.databaseName,
+// Инициализация бота
+console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
+const bot = new Telegraf(process.env.BOT_TOKEN);
+bot.catch((err, ctx) => {
+  console.error('Telegraf global error for update', ctx?.update, ':', err.stack);
+  if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
-bot.use(sessionMiddleware);
 
 // Схема пользователя
 const UserSchema = new mongoose.Schema({
@@ -60,14 +69,6 @@ const Settings = mongoose.model('Settings', SettingsSchema);
 // Определение администраторов
 const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => String(id.trim()));
 console.log('Parsed adminIds:', adminIds);
-
-// Инициализация бота
-console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
-const bot = new Telegraf(process.env.BOT_TOKEN);
-bot.catch((err, ctx) => {
-  console.error('Telegraf global error for update', ctx?.update, ':', err.stack);
-  if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
-});
 
 // Явная настройка вебхука
 app.post(`/bot${process.env.BOT_TOKEN}`, async (req, res) => {
@@ -464,7 +465,7 @@ bot.action('buy', async (ctx) => {
     if (!user.email) {
       if (!ctx.session) {
         console.error(`Session is undefined for user ${userId}`);
-        ctx.session = {}; // Инициализируем сессию, если она отсутствует
+        ctx.session = {};
       }
       ctx.session.waitingForEmail = true;
       await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты (например, user@example.com):');
