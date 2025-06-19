@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
+const MongoDBSession = require('telegraf-session-mongodb'); // Добавляем хранилище сессий
 require('dotenv').config();
 
 const app = express();
@@ -20,6 +21,13 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err.stack));
 
+// Настройка хранилища сессий
+const sessionMiddleware = MongoDBSession({
+  collectionName: 'sessions',
+  databaseName: mongoose.connection.db.databaseName,
+});
+bot.use(sessionMiddleware);
+
 // Схема пользователя
 const UserSchema = new mongoose.Schema({
   userId: String,
@@ -32,7 +40,7 @@ const UserSchema = new mongoose.Schema({
   firstName: String,
   username: String,
   phoneNumber: String,
-  email: String, // Добавлено поле для email
+  email: String,
   paymentDate: Date,
   paymentDocument: { type: String, default: null },
   lastActivity: { type: Date, default: Date.now },
@@ -56,7 +64,6 @@ console.log('Parsed adminIds:', adminIds);
 // Инициализация бота
 console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
 const bot = new Telegraf(process.env.BOT_TOKEN);
-bot.use(session());
 bot.catch((err, ctx) => {
   console.error('Telegraf global error for update', ctx?.update, ':', err.stack);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
@@ -455,6 +462,10 @@ bot.action('buy', async (ctx) => {
     await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
     const user = await User.findOne({ userId });
     if (!user.email) {
+      if (!ctx.session) {
+        console.error(`Session is undefined for user ${userId}`);
+        ctx.session = {}; // Инициализируем сессию, если она отсутствует
+      }
       ctx.session.waitingForEmail = true;
       await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты (например, user@example.com):');
       return;

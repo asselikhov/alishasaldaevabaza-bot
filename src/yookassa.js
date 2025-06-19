@@ -20,15 +20,15 @@ const createPayment = async ({ amount, description, paymentId, userId, returnUrl
       description,
       metadata: { userId, paymentId },
       receipt: {
-        customer: { email: email || 'default@example.com' }, // Используем переданный email
+        customer: { email: email || 'default@example.com' },
         items: [
           {
             description,
             quantity: 1,
             amount: { value: amount.toFixed(2), currency: 'RUB' },
-            vat_code: 2, // Без НДС
-            payment_subject: 'service', // Тип услуги
-            payment_method: 'full_payment', // Полная оплата
+            vat_code: 2,
+            payment_subject: 'service',
+            payment_method: 'full_payment',
           },
         ],
       },
