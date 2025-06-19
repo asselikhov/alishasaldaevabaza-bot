@@ -165,7 +165,7 @@ bot.start(async (ctx) => {
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуй снова позже или свяжитесь с нами.');
+    await ctx.reply('Произошла ошибка. Попробуйте снова позже или свяжитесь с нами.');
   }
 });
 
@@ -408,7 +408,7 @@ bot.on('text', async (ctx) => {
 // Функция обработки платежа
 async function processPayment(ctx, userId, chatId) {
   try {
-    console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? enero de 2025 : 'missing'}`);
+    console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
       const now = Math.floor(Date.now() / 1000);
