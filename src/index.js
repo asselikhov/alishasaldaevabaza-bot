@@ -164,14 +164,14 @@ bot.start(async (ctx) => {
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуй снова позже или свяжитесь с нами.');
+    await ctx.reply('Произошла ошибка. Попробуйте снова позже или свяжитесь с нами.');
   }
 });
 
 // Обработчик кнопки "👑 Админка"
 bot.action('admin_panel', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = String(ctx.from.id());
+  const userId = String(ctx.from.id);
   if (!adminIds.has(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
@@ -181,21 +181,21 @@ bot.action('admin_panel', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('start');
-    await ctx.editMessageText('Админка'Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
-    parse_mode: 'Markdown',
-        reply_markup: {
-      inline_keyboard: [
-        [{ text: 'Редактировать', callback_data: 'edit' }],
-        [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
-        [{ text: 'Статистика', callback_data: 'stats' }],
-        [{ text: '↩️ Назад', callback_data: 'back' }],
-      ],
-    },
-  });
-} catch (error) {
-  console.error(`Error in admin panel for user ${userId}:`, error.stack);
-  await ctx.reply('Ошибка при открытии админ-панели.');
-}
+    await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Редактировать', callback_data: 'edit' }],
+          [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
+          [{ text: 'Статистика', callback_data: 'stats' }],
+          [{ text: '↩️ Назад', callback_data: 'back' }],
+        ],
+      },
+    });
+  } catch (error) {
+    console.error(`Error in admin panel for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при открытии админ-панели.');
+  }
 });
 
 // Обработчик кнопки "↩️ Назад"
