@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const { session: sessionMongo } = require('telegraf-session-mongodb');
+const { MongoDB: sessionMongoDB } = require('telegraf-session-mongodb');
 require('dotenv').config();
 
 // Проверка версии telegraf-session-mongodb
@@ -16,7 +16,7 @@ app.use(express.json());
 // Логирование всех запросов
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] Received ${req.method} request at ${req.path}`);
-  if (req.body) console.log('Request body:', JSON.stringify(req.body));
+  console.log('Request body:', JSON.stringify(req.body));
   next();
 });
 
@@ -24,16 +24,16 @@ app.use((req, res, next) => {
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
       console.log('Connected to MongoDB');
-      // Настройка хранилища сессий после успешного подключения к MongoDB
+      // Настройка хранилища сессий
       try {
-        // Синтаксис для telegraf-session-mongodb@1.3.2
-        bot.use(sessionMongo({
+        const session = sessionMongoDB({
           url: process.env.MONGODB_URI,
           collectionName: 'sessions',
-        }).middleware());
+        });
+        bot.use(session.middleware());
         console.log('MongoDB session storage initialized');
       } catch (err) {
-        console.error('Failed to initialize MongoDB session storage:', err.stack);
+        console.error('Failed to initialize MongoDB session storage:', err.message);
         console.warn('Falling back to in-memory session storage');
         bot.use(session());
       }
@@ -45,10 +45,10 @@ mongoose.connect(process.env.MONGODB_URI)
     });
 
 // Инициализация бота
-console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present' : 'Token missing');
+console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present.' : 'Token missing!');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.catch((err, ctx) => {
-  console.error('Telegraf global error for update', ctx?.update, ':', err.stack);
+  console.error('Telegraf global error for update', ctx.update, ':', err.stack);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
 
@@ -76,14 +76,14 @@ const User = mongoose.model('User', UserSchema);
 const SettingsSchema = new mongoose.Schema({
   channelDescription: { type: String, default: 'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊' },
   supportLink: { type: String, default: 'https://t.me/Eagleshot' },
-  welcomeMessage: { type: String, default: 'Привет! Я очень рада видеть тебя тут! Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе❤️\n\nПОЧЕМУ ЭТО ВЫГОДНО?\n\n- быстрая доставка\n- ооооочеень низкие цены\n- все заказы можно сделать через Вконтакте' },
+  welcomeMessage: { type: String, default: 'Привет! Я очень рада видеть тебя тут! 😎 Если ты лютая модница и устала переплачивать за шмотки, жду тебя в моем закрытом тг канале! Давай экономить вместе! ❤️\n\nПОЧЕМУ ЭТО ВЫГОДНО?\n• Быстрая доставка\n• Ооооочеень низкие цены\n• Все заказы можно сделать через Вконтакте\n' },
 });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
 
 // Определение администраторов
-const adminIds = (process.env.ADMIN_CHAT_IDS || '').split(',').map(id => String(id.trim()));
-console.log('Parsed adminIds:', adminIds);
+const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
+console.log('Parsed adminIds:', [...adminIds]);
 
 // Явная настройка вебхука
 app.post(`/bot${process.env.BOT_TOKEN}`, async (req, res) => {
@@ -127,7 +127,7 @@ bot.start(async (ctx) => {
   console.log(`Received /start command from ${ctx.from.id}`);
   const userId = String(ctx.from.id);
   const chatId = String(ctx.chat.id);
-  const { first_name, username, phone_number } = ctx.from;
+  const { first_name: firstName, username, phone_number: phoneNumber } = ctx.from;
 
   try {
     console.log(`Processing /start for userId: ${userId}`);
@@ -135,38 +135,37 @@ bot.start(async (ctx) => {
     console.log(`User found or to be created: ${user ? 'exists' : 'new'}`);
     if (!user) {
       console.log(`Creating new user: ${userId}`);
-      user = await User.findOneAndUpdate(
-          { userId },
-          { userId, chatId, firstName: first_name, username, phoneNumber: phone_number, lastActivity: new Date() },
-          { upsert: true, new: true }
-      );
+      user = await User.create({
+        userId,
+        chatId,
+        firstName,
+        username,
+        phoneNumber,
+        lastActivity: new Date(),
+      });
       console.log(`User created: ${JSON.stringify(user)}`);
     } else {
-      await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+      await User.updateOne({ userId }, { lastActivity: new Date() });
     }
 
     const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
-    let replyMarkup = {
+    const replyMarkup = {
       reply_markup: {
         inline_keyboard: [
           [
             { text: '🔥 Купить за 399р.', callback_data: 'buy' },
             { text: '💬 Техподдержка', url: settings.supportLink },
           ],
+          ...(adminIds.has(userId) ? [[
+            { text: '👑 Админка', callback_data: 'admin_panel' },
+            { text: '💡 О канале', callback_data: 'about' },
+          ]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
         ],
       },
     };
-    if (adminIds.includes(userId)) {
-      replyMarkup.reply_markup.inline_keyboard.push([
-        { text: '👑 Админка', callback_data: 'admin_panel' },
-        { text: '💡 О канале', callback_data: 'about' },
-      ]);
-    } else {
-      replyMarkup.reply_markup.inline_keyboard.push([{ text: '💡 О канале', callback_data: 'about' }]);
-    }
     await ctx.replyWithMarkdown(await getWelcomeMessage(), replyMarkup);
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
@@ -179,12 +178,12 @@ bot.start(async (ctx) => {
 bot.action('admin_panel', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
+  if (!adminIds.has(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
 
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('start');
@@ -210,31 +209,27 @@ bot.action('back', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     const lastAction = ctx.session.navHistory.pop() || 'start';
 
     if (lastAction === 'start') {
       const settings = await getSettings();
-      let replyMarkup = {
+      const replyMarkup = {
         reply_markup: {
           inline_keyboard: [
             [
               { text: '🔥 Купить за 399р.', callback_data: 'buy' },
               { text: '💬 Техподдержка', url: settings.supportLink },
             ],
+            ...(adminIds.has(userId) ? [[
+              { text: '👑 Админка', callback_data: 'admin_panel' },
+              { text: '💡 О канале', callback_data: 'about' },
+            ]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
           ],
         },
       };
-      if (adminIds.includes(userId)) {
-        replyMarkup.reply_markup.inline_keyboard.push([
-          { text: '👑 Админка', callback_data: 'admin_panel' },
-          { text: '💡 О канале', callback_data: 'about' },
-        ]);
-      } else {
-        replyMarkup.reply_markup.inline_keyboard.push([{ text: '💡 О канале', callback_data: 'about' }]);
-      }
       await ctx.editMessageText(await getWelcomeMessage(), {
         parse_mode: 'Markdown',
         reply_markup: replyMarkup.reply_markup,
@@ -262,12 +257,12 @@ bot.action('back', async (ctx) => {
 bot.action('edit', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
+  if (!adminIds.has(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
 
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
@@ -292,12 +287,12 @@ bot.action('edit', async (ctx) => {
 bot.action('edit_channel', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
+  if (!adminIds.has(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
 
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'channelDescription';
     await ctx.reply('Введите новое описание канала:');
@@ -311,12 +306,12 @@ bot.action('edit_channel', async (ctx) => {
 bot.action('edit_support', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
+  if (!adminIds.has(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
 
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'supportLink';
     await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
@@ -330,12 +325,12 @@ bot.action('edit_support', async (ctx) => {
 bot.action('edit_welcome', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
-  if (!adminIds.includes(userId)) {
+  if (!adminIds.has(userId)) {
     return ctx.reply('Доступ запрещён.');
   }
 
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'welcomeMessage';
     await ctx.reply('Введите новое приветственное сообщение:');
@@ -351,7 +346,7 @@ bot.on('text', async (ctx) => {
   ctx.session = ctx.session || {};
 
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     const text = ctx.message.text.trim();
 
     // Обработка ввода email для оплаты
@@ -360,7 +355,7 @@ bot.on('text', async (ctx) => {
       if (!emailRegex.test(text)) {
         return ctx.reply('Пожалуйста, введите действительный email (например, user@example.com):');
       }
-      await User.findOneAndUpdate({ userId }, { email: text });
+      await User.updateOne({ userId }, { email: text });
       ctx.session.waitingForEmail = false;
       await ctx.reply('Email сохранён! Перехожу к созданию платежа...');
       await processPayment(ctx, userId, String(ctx.chat.id));
@@ -368,7 +363,7 @@ bot.on('text', async (ctx) => {
     }
 
     // Обработка редактирования админом
-    if (!adminIds.includes(userId) || !ctx.session.editing) {
+    if (!adminIds.has(userId) || !ctx.session.editing) {
       return;
     }
 
@@ -387,7 +382,7 @@ bot.on('text', async (ctx) => {
       let supportLink = text;
       if (supportLink.startsWith('@')) {
         supportLink = `https://t.me/${supportLink.slice(1)}`;
-      } else if (!supportLink.startsWith('http://') && !supportLink.startsWith('https://')) {
+      } else if (!supportLink.match(/^https?:\/\//)) {
         return ctx.reply('Введите действительный URL или Telegram-username (например, @Username). Попробуйте снова:');
       }
       cachedSettings = await Settings.findOneAndUpdate(
@@ -429,9 +424,8 @@ async function processPayment(ctx, userId, chatId) {
             inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
           },
         });
-      } else {
-        return ctx.reply('Ваша ссылка истекла. Свяжитесь с поддержкой для получения новой.');
       }
+      return ctx.reply('Ваша ссылка истекла. Свяжитесь с поддержкой для получения новой.');
     }
 
     const paymentId = uuidv4();
@@ -445,12 +439,10 @@ async function processPayment(ctx, userId, chatId) {
         returnUrl: process.env.RETURN_URL,
         email: user.email,
       }),
-      new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 15000)
-      )
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 15000))
     ]);
 
-    await User.findOneAndUpdate(
+    await User.updateOne(
         { userId },
         { paymentId, paymentStatus: 'pending', chatId, lastActivity: new Date() },
         { upsert: true }
@@ -475,13 +467,10 @@ bot.action('buy', async (ctx) => {
   const chatId = String(ctx.chat.id);
 
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     const user = await User.findOne({ userId });
     if (!user.email) {
-      if (!ctx.session) {
-        console.error(`Session is undefined for user ${userId}`);
-        ctx.session = {};
-      }
+      ctx.session = ctx.session || {};
       ctx.session.waitingForEmail = true;
       await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты (например, user@example.com):');
       return;
@@ -498,7 +487,7 @@ bot.action('about', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
   try {
-    await User.findOneAndUpdate({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     const settings = await getSettings();
     try {
       await ctx.editMessageText(settings.channelDescription, {
@@ -578,9 +567,9 @@ app.post('/webhook/yookassa', async (req, res) => {
               caption: `Document оплаты для user_${user.userId}`,
             }
         );
-        const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.split('-100')[1]}/${paymentDoc.message_id}`;
+        const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.replace('-100', '')}/${paymentDoc.message_id}`;
 
-        await User.findOneAndUpdate(
+        await User.updateOne(
             { userId: user.userId, paymentId: object.id },
             {
               paymentStatus: 'succeeded',
@@ -590,8 +579,7 @@ app.post('/webhook/yookassa', async (req, res) => {
               paymentDate: new Date(),
               paymentDocument,
               lastActivity: new Date(),
-            },
-            { new: true }
+            }
         );
         await bot.telegram.sendMessage(
             user.chatId,
