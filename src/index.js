@@ -26,11 +26,10 @@ mongoose.connect(process.env.MONGODB_URI)
       console.log('Connected to MongoDB');
       // Настройка хранилища сессий
       try {
-        const session = sessionMongoDB({
+        bot.use(sessionMongoDB({
           url: process.env.MONGODB_URI,
           collectionName: 'sessions',
-        });
-        bot.use(session.middleware());
+        }).middleware());
         console.log('MongoDB session storage initialized');
       } catch (err) {
         console.error('Failed to initialize MongoDB session storage:', err.message);
