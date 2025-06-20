@@ -16,23 +16,19 @@ app.use((req, res, next) => {
 });
 
 // Проверка переменных окружения
-if (!process.env.BOT_TOKEN) {
-  console.error('BOT_TOKEN is not defined in environment variables');
-  process.exit(1);
+const requiredEnvVars = ['BOT_TOKEN', 'MONGODB_URI', 'YOOKASSA_SHOP_ID', 'YOOKASSA_SECRET_KEY', 'CHANNEL_ID', 'PAYMENT_GROUP_ID', 'ADMIN_CHAT_IDS', 'RETURN_URL'];
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`${envVar} is not defined in environment variables`);
+    process.exit(1);
+  }
 }
-if (!process.env.MONGODB_URI) {
-  console.error('MONGODB_URI is not defined in environment variables');
-  process.exit(1);
-}
-console.log('BOT_TOKEN is set:', process.env.BOT_TOKEN.length, 'characters');
-console.log('MONGODB_URI is set:', process.env.MONGODB_URI.length, 'characters');
+console.log('All required environment variables are set');
 
 // Настройка Mongoose
 mongoose.set('strictQuery', true);
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => {
-      console.log('Connected to MongoDB via Mongoose');
-    })
+    .then(() => console.log('Connected to MongoDB via Mongoose'))
     .catch(err => {
       console.error('MongoDB connection error:', err.message);
       console.warn('Falling back to in-memory session storage');
@@ -418,10 +414,10 @@ bot.action('export_subscribers', async (ctx) => {
       { header: 'Имя', key: 'firstName', width: 20 },
       { header: 'Username', key: 'username', width: 20 },
       { header: 'Телефон', key: 'phoneNumber', width: 15 },
-      { header: 'Email', key: email, width: 30 },
+      { header: 'Email', key: 'email', width: 30 },
       { header: 'Дата Платежа', key: 'paymentDate', width: 20 },
       { header: 'Документ Платежа', key: 'paymentDocument', width: 40 },
-      { header: 'Последняя Активность', key: 'lastActivity', width: 20 },
+      { header: 'Последняя Активность', key: 25 },
     ];
 
     worksheet.getRow(1).font = { bold: true, size: 12 };
@@ -450,19 +446,18 @@ bot.action('export_subscribers', async (ctx) => {
         paymentDocument: user.paymentDocument || 'N/A',
         lastActivity: user.lastActivity ? user.lastActivity.toLocaleString('ru-RU') : 'N/A',
       });
-    });
+    }));
 
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (rowNumber > 1) {
+      if (rowNumber > 1)) {
         row.font = { size: 11 };
         row.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-        row.height = 25;
-      }
-    });
+      };
+    }));
 
     ['L', 'N'].forEach(col => {
       worksheet.getColumn(col).numFmt = 'dd.mm.yyyy hh:mm:ss';
-    });
+    }));
 
     worksheet.columns.forEach(column => {
       let maxLength = 0;
@@ -471,12 +466,12 @@ bot.action('export_subscribers', async (ctx) => {
         maxLength = Math.max(maxLength, cellLength);
       });
       column.width = Math.min(maxLength + 2, 50);
-    });
+    }));
 
     const buffer = await workbook.xlsx.writeBuffer();
     await ctx.replyWithDocument({
       source: buffer,
-      filename: `subscribers_${new Date().toISOString().split('T')[0]}.xlsx`,
+      filename: `subscribers_${new Date().toISOString().split('T')[0]0}.xlsx`,
     });
   } catch (error) {
     console.error(`Error in export_subscribers for user ${userId}:`, error.message);
@@ -499,10 +494,10 @@ bot.action('back', async (ctx) => {
       const replyMarkup = {
         reply_markup: {
           inline_keyboard: [
-            [
+            [[
               { text: '🔥 Купить за 399р.', callback_data: 'buy' },
               { text: '💬 Техподдержка', url: settings.supportLink },
-            ],
+            ]],
             ...(adminIds.has(userId) ? [[
               { text: '👑 Админка', callback_data: 'admin_panel' },
               { text: '💡 О канале', callback_data: 'about' },
@@ -515,7 +510,7 @@ bot.action('back', async (ctx) => {
         reply_markup: replyMarkup.reply_markup,
       });
     } else if (lastAction === 'admin_panel') {
-      await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖️-👖️', {
+      await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -525,7 +520,7 @@ bot.action('back', async (ctx) => {
             [{ text: '↩️ Назад', callback_data: 'back' }],
           ],
         },
-      })l
+      });
     }
   } catch (error) {
     console.error(`Error in back for user ${userId}:`, error.stack);
@@ -542,9 +537,9 @@ bot.action('edit', async (ctx) => {
   }
 
   try {
-    await User.updateOne({ userId: userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
-    ctx.services.navHistory = ctx.session.navHistory || [];
+    ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
     await ctx.editMessageText('Выберите, что редактировать:', {
       parse_mode: 'Markdown',
@@ -586,12 +581,12 @@ bot.action('edit_channel', async (ctx) => {
 bot.action('edit_support', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
-  if (!adminIds.has(userId')) {
-  return ctx.reply('Доступ запрещён.');
-}
+  if (!adminIds.has(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
 
-try {
-  await User.updateOne({ userId': userId }, { lastActivity: new Date() });
+  try {
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'supportLink';
     await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
@@ -804,7 +799,7 @@ app.get('/return', async (req, res) => {
         }
       }
     } catch (error) {
-      console.error('Error processing /return:', error.stack);
+      console.error('Error processing /return:', error.message);
     }
   }
   res.send('Оплата обработана! Вы будете перенаправлены в Telegram.');
@@ -819,8 +814,10 @@ app.post('/webhook/yookassa', async (req, res) => {
     console.log('Received Yookassa webhook with body:', JSON.stringify(req.body));
     const { event, object } = req.body;
     if (event === 'payment.succeeded') {
+      console.log(`Processing payment.succeeded for paymentId: ${object.id}`);
       const user = await User.findOne({ paymentId: object.id });
       if (user && !user.joinedChannel) {
+        console.log(`Sending invite link for user ${user.userId}`);
         await sendInviteLink(user, { chat: { id: user.chatId } }, object.id);
       } else if (!user) {
         console.warn(`No user found for paymentId: ${object.id}`);
@@ -831,16 +828,18 @@ app.post('/webhook/yookassa', async (req, res) => {
           );
         }
       }
+    } else {
+      console.log(`Received unhandled event: ${event}`);
     }
     res.sendStatus(200);
   } catch (error) {
     console.error('Error in Yookassa webhook:', error.message);
-    res.sendStatus(500);
+    res.sendStatus(200); // ЮKassa ожидает 200 даже при ошибке
   }
 });
 
 // Запуск сервера
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 5000;
 console.log(`Starting server on port ${PORT}`);
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
