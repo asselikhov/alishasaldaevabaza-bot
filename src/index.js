@@ -156,7 +156,7 @@ async function sendInviteLink(user, ctx, paymentId) {
       console.log(`[INVITE] User ${user.userId} already has a valid invite link: ${user.inviteLink}`);
       await bot.telegram.sendMessage(
           user.chatId,
-          'Оплата прошла успешно! 🎉 Ваша одноразовая ссылка для вступления в закрытый канал уже отправлена ранее:',
+          'Оплата прошла успешно! 🎉 Ваша персональная ссылка для вступления в закрытый канал уже отправлена ранее:',
           {
             parse_mode: 'Markdown',
             reply_markup: {
@@ -171,7 +171,7 @@ async function sendInviteLink(user, ctx, paymentId) {
         process.env.CHANNEL_ID,
         {
           name: `Invite for user_${user.userId}`,
-          member_limit: 1,
+          member_limit: 1, // Ограничиваем использование ссылки одним пользователем
           creates_join_request: false,
         }
     );
@@ -214,7 +214,7 @@ async function sendInviteLink(user, ctx, paymentId) {
           paymentStatus: 'succeeded',
           joinedChannel: true,
           inviteLink: chatInvite.invite_link,
-          inviteLinkExpires: null,
+          inviteLinkExpires: null, // Удаляем срок действия для постоянной ссылки
           paymentDate: new Date(paymentData.created_at),
           paymentDocument,
           lastActivity: new Date(),
@@ -235,7 +235,7 @@ async function sendInviteLink(user, ctx, paymentId) {
     }
     ctx.session.botMessages = []; // Очищаем список после удаления
 
-    // Отправка нового приветственного сообщения для оплаченных пользователей
+    // Отправка приветственного сообщения для оплаченных пользователей
     const settings = await getSettings();
     const welcomeMessage = await bot.telegram.sendMessage(
         user.chatId,
@@ -253,7 +253,21 @@ async function sendInviteLink(user, ctx, paymentId) {
     // Сохраняем message_id нового сообщения в сессии
     ctx.session.botMessages = ctx.session.botMessages || [];
     ctx.session.botMessages.push(welcomeMessage.message_id);
-    console.log(`[INVITE] New welcome message sent to user ${user.userId}, message_id: ${welcomeMessage.message_id}`);
+    console.log(`[INVITE] Welcome message sent to user ${user.userId}, message_id: ${welcomeMessage.message_id}`);
+
+    // Отправка персональной ссылки для вступления
+    const inviteMessage = await bot.telegram.sendMessage(
+        user.chatId,
+        'Вот ваша персональная ссылка для вступления в закрытый канал:',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
+          },
+        }
+    );
+    ctx.session.botMessages.push(inviteMessage.message_id);
+    console.log(`[INVITE] Invite link sent to user ${user.userId}, message_id: ${inviteMessage.message_id}`);
 
     // Уведомление администраторов
     for (const adminId of adminIds) {
@@ -267,7 +281,7 @@ async function sendInviteLink(user, ctx, paymentId) {
     console.error(`[INVITE] Error sending invite link for user ${user.userId}:`, error.message, error.stack);
     await bot.telegram.sendMessage(
         user.chatId,
-        'Ошибка при создании одноразовой ссылки на канал. Пожалуйста, свяжитесь с поддержкой.',
+        'Ошибка при создании персональной ссылки на канал. Пожалуйста, свяжитесь с поддержкой.',
         {
           reply_markup: {
             inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]],
@@ -294,7 +308,7 @@ bot.command('checkpayment', async (ctx) => {
     }
 
     if (user.paymentStatus === 'succeeded' && user.inviteLink) {
-      return ctx.reply('Ваш платёж уже подтверждён! Вот ваша одноразовая ссылка:', {
+      return ctx.reply('Ваш платёж уже подтверждён! Вот ваша персональная ссылка:', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
@@ -350,25 +364,54 @@ bot.start(async (ctx) => {
 
     const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
-    const welcomeMessage = await ctx.replyWithMarkdown(await getWelcomeMessage(), {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
-            { text: '💬 Техподдержка', url: settings.supportLink },
+    if (user.paymentStatus === 'succeeded' && user.inviteLink) {
+      const paidWelcomeMessage = await bot.telegram.sendMessage(
+          chatId,
+          await getPaidWelcomeMessage(),
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '💬 Техподдержка', url: settings.supportLink }],
+                [{ text: '💡 О канале', callback_data: 'about' }],
+              ],
+            },
+          }
+      );
+      ctx.session = ctx.session || {};
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(paidWelcomeMessage.message_id);
+      const inviteMessage = await bot.telegram.sendMessage(
+          chatId,
+          'Вот ваша персональная ссылка для вступления в закрытый канал:',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+            },
+          }
+      );
+      ctx.session.botMessages.push(inviteMessage.message_id);
+    } else {
+      const welcomeMessage = await ctx.replyWithMarkdown(await getWelcomeMessage(), {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+              { text: '💬 Техподдержка', url: settings.supportLink },
+            ],
+            ...(adminIds.has(userId) ? [[
+              { text: '👑 Админка', callback_data: 'admin_panel' },
+              { text: '💡 О канале', callback_data: 'about' },
+            ]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
           ],
-          ...(adminIds.has(userId) ? [[
-            { text: '👑 Админка', callback_data: 'admin_panel' },
-            { text: '💡 О канале', callback_data: 'about' },
-          ]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
-        ],
-      },
-    });
-    // Сохраняем message_id в сессии
-    ctx.session = ctx.session || {};
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(welcomeMessage.message_id);
-    console.log(`Reply sent to ${userId}, message_id: ${welcomeMessage.message_id}`);
+        },
+      });
+      ctx.session = ctx.session || {};
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(welcomeMessage.message_id);
+    }
+    console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.message);
     await ctx.reply('Произошла ошибка. Попробуй снова или свяжитесь с нами.');
@@ -904,7 +947,7 @@ async function processPayment(ctx, userId, chatId) {
     console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
-      const existingMessage = await ctx.reply('Вы уже оплатили доступ! Вот ваша одноразовая ссылка для вступления в канал:', {
+      const existingMessage = await ctx.reply('Вы уже оплатили доступ! Вот ваша персональная ссылка для вступления в канал:', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
