@@ -222,19 +222,22 @@ async function sendInviteLink(user, ctx, paymentId) {
     );
     console.log(`[INVITE] User ${user.userId} updated with invite link and payment details`);
 
-    // Удаление всех предыдущих сообщений пользователя
-    const chatHistory = await bot.telegram.getChatHistory(user.chatId, { limit: 100 });
-    for (const message of chatHistory) {
+    // Удаление сообщений, отправленных ботом, из сессии
+    ctx.session = ctx.session || {};
+    const botMessages = ctx.session.botMessages || [];
+    for (const messageId of botMessages) {
       try {
-        await bot.telegram.deleteMessage(user.chatId, message.message_id);
+        await bot.telegram.deleteMessage(user.chatId, messageId);
+        console.log(`[INVITE] Deleted bot message ${messageId} for user ${user.userId}`);
       } catch (deleteError) {
-        console.warn(`[INVITE] Failed to delete message ${message.message_id} for user ${user.userId}:`, deleteError.message);
+        console.warn(`[INVITE] Failed to delete message ${messageId} for user ${user.userId}:`, deleteError.message);
       }
     }
+    ctx.session.botMessages = []; // Очищаем список после удаления
 
     // Отправка нового приветственного сообщения для оплаченных пользователей
     const settings = await getSettings();
-    await bot.telegram.sendMessage(
+    const welcomeMessage = await bot.telegram.sendMessage(
         user.chatId,
         await getPaidWelcomeMessage(),
         {
@@ -247,7 +250,10 @@ async function sendInviteLink(user, ctx, paymentId) {
           },
         }
     );
-    console.log(`[INVITE] New welcome message sent to user ${user.userId}`);
+    // Сохраняем message_id нового сообщения в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(welcomeMessage.message_id);
+    console.log(`[INVITE] New welcome message sent to user ${user.userId}, message_id: ${welcomeMessage.message_id}`);
 
     // Уведомление администраторов
     for (const adminId of adminIds) {
@@ -344,9 +350,7 @@ bot.start(async (ctx) => {
 
     const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
-    ctx.session = ctx.session || {};
-    ctx.session.navHistory = ctx.session.navHistory || [];
-    const replyMarkup = {
+    const welcomeMessage = await ctx.replyWithMarkdown(await getWelcomeMessage(), {
       reply_markup: {
         inline_keyboard: [
           [
@@ -359,25 +363,12 @@ bot.start(async (ctx) => {
           ]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
         ],
       },
-    };
-    if (user.paymentStatus === 'succeeded' && user.inviteLink) {
-      await bot.telegram.sendMessage(
-          chatId,
-          await getPaidWelcomeMessage(),
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '💬 Техподдержка', url: settings.supportLink }],
-                [{ text: '💡 О канале', callback_data: 'about' }],
-              ],
-            },
-          }
-      );
-    } else {
-      await ctx.replyWithMarkdown(await getWelcomeMessage(), replyMarkup);
-    }
-    console.log(`Reply sent to ${userId}`);
+    });
+    // Сохраняем message_id в сессии
+    ctx.session = ctx.session || {};
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(welcomeMessage.message_id);
+    console.log(`Reply sent to ${userId}, message_id: ${welcomeMessage.message_id}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.message);
     await ctx.reply('Произошла ошибка. Попробуй снова или свяжитесь с нами.');
@@ -397,7 +388,7 @@ bot.action('admin_panel', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('start');
-    await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+    const adminMessage = await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
@@ -408,6 +399,9 @@ bot.action('admin_panel', async (ctx) => {
         ],
       },
     });
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(adminMessage.message_id);
   } catch (error) {
     console.error(`Error in admin panel for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при открытии админ-панели.');
@@ -454,12 +448,15 @@ ${activeUsersList}
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
 
-    await ctx.editMessageText(statsMessage, {
+    const statsMessageObj = await ctx.editMessageText(statsMessage, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
       },
     });
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(statsMessageObj.message_id);
   } catch (error) {
     console.error(`Error in stats for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
@@ -555,10 +552,13 @@ bot.action('export_subscribers', async (ctx) => {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    await ctx.replyWithDocument({
+    const docMessage = await ctx.replyWithDocument({
       source: buffer,
       filename: `subscribers_${new Date().toISOString().split('T')[0]}.xlsx`,
     });
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(docMessage.message_id);
   } catch (error) {
     console.error(`Error in export_subscribers for user ${userId}:`, error.message);
     await ctx.reply('Ошибка передачи подписчиков. Попробуйте позже.');
@@ -592,24 +592,25 @@ bot.action('back', async (ctx) => {
           ],
         },
       };
-      if (user.paymentStatus === 'succeeded' && user.inviteLink) {
-        await ctx.editMessageText(await getPaidWelcomeMessage(), {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '💬 Техподдержка', url: settings.supportLink }],
-              [{ text: '💡 О канале', callback_data: 'about' }],
-            ],
-          },
-        });
-      } else {
-        await ctx.editMessageText(await getWelcomeMessage(), {
-          parse_mode: 'Markdown',
-          reply_markup: replyMarkup.reply_markup,
-        });
-      }
+      const backMessage = await (user.paymentStatus === 'succeeded' && user.inviteLink
+          ? ctx.editMessageText(await getPaidWelcomeMessage(), {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '💬 Техподдержка', url: settings.supportLink }],
+                [{ text: '💡 О канале', callback_data: 'about' }],
+              ],
+            },
+          })
+          : ctx.editMessageText(await getWelcomeMessage(), {
+            parse_mode: 'Markdown',
+            reply_markup: replyMarkup.reply_markup,
+          }));
+      // Сохраняем message_id в сессии
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(backMessage.message_id);
     } else if (lastAction === 'admin_panel') {
-      await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+      const adminMessage = await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -620,6 +621,9 @@ bot.action('back', async (ctx) => {
           ],
         },
       });
+      // Сохраняем message_id в сессии
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(adminMessage.message_id);
     }
   } catch (error) {
     console.error(`Error in back for user ${userId}:`, error.stack);
@@ -640,7 +644,7 @@ bot.action('edit', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
-    await ctx.editMessageText('Выберите, что редактировать:', {
+    const editMessage = await ctx.editMessageText('Выберите, что редактировать:', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
@@ -653,6 +657,9 @@ bot.action('edit', async (ctx) => {
         ],
       },
     });
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(editMessage.message_id);
   } catch (error) {
     console.error(`Error in edit for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при выборе редактирования.');
@@ -671,7 +678,10 @@ bot.action('edit_channel', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'channelDescription';
-    await ctx.reply('Введите новое описание канала:');
+    const editChannelMessage = await ctx.reply('Введите новое описание канала:');
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(editChannelMessage.message_id);
   } catch (error) {
     console.error(`Error in edit_channel for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе описания канала.');
@@ -690,7 +700,10 @@ bot.action('edit_support', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'supportLink';
-    await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
+    const editSupportMessage = await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(editSupportMessage.message_id);
   } catch (error) {
     console.error(`Error in edit_support for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе ссылки техподдержки.');
@@ -709,7 +722,10 @@ bot.action('edit_welcome', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'welcomeMessage';
-    await ctx.reply('Введите новое приветственное сообщение:');
+    const editWelcomeMessage = await ctx.reply('Введите новое приветственное сообщение:');
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(editWelcomeMessage.message_id);
   } catch (error) {
     console.error(`Error in edit_welcome for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе приветственного сообщения.');
@@ -728,7 +744,10 @@ bot.action('edit_payment_amount', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'paymentAmount';
-    await ctx.reply('Введите новую сумму оплаты в рублях (например, 499):');
+    const editAmountMessage = await ctx.reply('Введите новую сумму оплаты в рублях (например, 499):');
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(editAmountMessage.message_id);
   } catch (error) {
     console.error(`Error in edit_payment_amount for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе суммы оплаты.');
@@ -747,7 +766,10 @@ bot.action('edit_paid_welcome', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'paidWelcomeMessage';
-    await ctx.reply('Введите новое приветственное сообщение для пользователей после оплаты:');
+    const editPaidWelcomeMessage = await ctx.reply('Введите новое приветственное сообщение для пользователей после оплаты:');
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(editPaidWelcomeMessage.message_id);
   } catch (error) {
     console.error(`Error in edit_paid_welcome for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе приветственного сообщения после оплаты.');
@@ -766,11 +788,16 @@ bot.on('text', async (ctx) => {
     if (ctx.session.waitingForEmail) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(text)) {
-        return ctx.reply('Пожалуйста, введите действительный email (например, user@example.com):');
+        const errorMessage = await ctx.reply('Пожалуйста, введите действительный email (например, user@example.com):');
+        ctx.session.botMessages = ctx.session.botMessages || [];
+        ctx.session.botMessages.push(errorMessage.message_id);
+        return;
       }
       await User.updateOne({ userId }, { email: text });
       ctx.session.waitingForEmail = false;
-      await ctx.reply('Email сохранён! Перехожу к созданию платежа...');
+      const successMessage = await ctx.reply('Email сохранён! Перехожу к созданию платежа...');
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(successMessage.message_id);
       return await processPayment(ctx, userId, String(ctx.chat.id));
     }
 
@@ -780,7 +807,10 @@ bot.on('text', async (ctx) => {
 
     if (ctx.session.editing === 'channelDescription') {
       if (text.length < 10) {
-        return ctx.reply('Описание должно быть не короче 10 символов. Попробуйте снова:');
+        const errorMessage = await ctx.reply('Описание должно быть не короче 10 символов. Попробуйте снова:');
+        ctx.session.botMessages = ctx.session.botMessages || [];
+        ctx.session.botMessages.push(errorMessage.message_id);
+        return;
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -788,13 +818,18 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      await ctx.reply('Описание канала обновлено!');
+      const successMessage = await ctx.reply('Описание канала обновлено!');
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(successMessage.message_id);
     } else if (ctx.session.editing === 'supportLink') {
       let supportLink = text;
       if (supportLink.startsWith('@')) {
         supportLink = `https://t.me/${supportLink.slice(1)}`;
       } else if (!supportLink.match(/^https?:\/\//)) {
-        return ctx.reply('Введите действительный URL или Telegram-username (например, @Username). Попробуйте снова:');
+        const errorMessage = await ctx.reply('Введите действительный URL или Telegram-username (например, @Username). Попробуйте снова:');
+        ctx.session.botMessages = ctx.session.botMessages || [];
+        ctx.session.botMessages.push(errorMessage.message_id);
+        return;
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -802,10 +837,15 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      await ctx.reply('Ссылка на техподдержку обновлена!');
+      const successMessage = await ctx.reply('Ссылка на техподдержку обновлена!');
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(successMessage.message_id);
     } else if (ctx.session.editing === 'welcomeMessage') {
       if (text.length < 10) {
-        return ctx.reply('Приветственное сообщение должно быть не короче 10 символов. Попробуйте снова:');
+        const errorMessage = await ctx.reply('Приветственное сообщение должно быть не короче 10 символов. Попробуйте снова:');
+        ctx.session.botMessages = ctx.session.botMessages || [];
+        ctx.session.botMessages.push(errorMessage.message_id);
+        return;
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -813,11 +853,16 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      await ctx.reply('Приветственное сообщение обновлено!');
+      const successMessage = await ctx.reply('Приветственное сообщение обновлено!');
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(successMessage.message_id);
     } else if (ctx.session.editing === 'paymentAmount') {
       const amount = parseFloat(text);
       if (isNaN(amount) || amount <= 0) {
-        return ctx.reply('Пожалуйста, введите корректную сумму больше 0 (например, 499):');
+        const errorMessage = await ctx.reply('Пожалуйста, введите корректную сумму больше 0 (например, 499):');
+        ctx.session.botMessages = ctx.session.botMessages || [];
+        ctx.session.botMessages.push(errorMessage.message_id);
+        return;
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -825,10 +870,15 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      await ctx.reply(`Сумма оплаты обновлена на ${amount} руб.!`);
+      const successMessage = await ctx.reply(`Сумма оплаты обновлена на ${amount} руб.!`);
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(successMessage.message_id);
     } else if (ctx.session.editing === 'paidWelcomeMessage') {
       if (text.length < 10) {
-        return ctx.reply('Приветственное сообщение после оплаты должно быть не короче 10 символов. Попробуйте снова:');
+        const errorMessage = await ctx.reply('Приветственное сообщение после оплаты должно быть не короче 10 символов. Попробуйте снова:');
+        ctx.session.botMessages = ctx.session.botMessages || [];
+        ctx.session.botMessages.push(errorMessage.message_id);
+        return;
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -836,11 +886,15 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      await ctx.reply('Приветственное сообщение после оплаты обновлено!');
+      const successMessage = await ctx.reply('Приветственное сообщение после оплаты обновлено!');
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(successMessage.message_id);
     }
   } catch (error) {
     console.error(`Error processing text input for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при сохранении изменений. Попробуйте снова.');
+    const errorMessage = await ctx.reply('Ошибка при сохранении изменений. Попробуйте снова.');
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(errorMessage.message_id);
   }
 });
 
@@ -850,12 +904,15 @@ async function processPayment(ctx, userId, chatId) {
     console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
-      return ctx.reply('Вы уже оплатили доступ! Вот ваша одноразовая ссылка для вступления в канал:', {
+      const existingMessage = await ctx.reply('Вы уже оплатили доступ! Вот ваша одноразовая ссылка для вступления в канал:', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
         },
       });
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(existingMessage.message_id);
+      return;
     }
 
     const settings = await getSettings();
@@ -881,19 +938,23 @@ async function processPayment(ctx, userId, chatId) {
     );
     console.log(`[PAYMENT] Saved paymentId ${payment.id} for user ${userId}`);
 
-    await ctx.reply('Перейдите по ссылке для оплаты:', {
+    const paymentMessage = await ctx.reply('Перейдите по ссылке для оплаты:', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: 'Оплатить', url: payment.confirmation.confirmation_url }]],
       },
     });
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(paymentMessage.message_id);
   } catch (error) {
     console.error(`Payment error for user ${userId}:`, error.message);
-    await ctx.reply('Ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.', {
+    const errorMessage = await ctx.reply('Ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.', {
       reply_markup: {
         inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]],
       },
     });
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(errorMessage.message_id);
   }
 }
 
@@ -909,13 +970,17 @@ bot.action('buy', async (ctx) => {
     if (!user.email) {
       ctx.session = ctx.session || {};
       ctx.session.waitingForEmail = true;
-      await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты:');
+      const emailMessage = await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты:');
+      ctx.session.botMessages = ctx.session.botMessages || [];
+      ctx.session.botMessages.push(emailMessage.message_id);
       return;
     }
     await processPayment(ctx, userId, chatId);
   } catch (error) {
     console.error(`Error in buy for user ${userId}:`, error.message);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
+    const errorMessage = await ctx.reply('Произошла ошибка. Попробуйте позже.');
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(errorMessage.message_id);
   }
 });
 
@@ -926,24 +991,31 @@ bot.action('about', async (ctx) => {
   try {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const settings = await getSettings();
-    try {
-      await ctx.editMessageText(settings.channelDescription, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
-        },
-      });
-    } catch (editError) {
-      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
-      await ctx.replyWithMarkdown(settings.channelDescription, {
-        reply_markup: {
-          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
-        },
-      });
-    }
+    const aboutMessage = await (async () => {
+      try {
+        return await ctx.editMessageText(settings.channelDescription, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
+          },
+        });
+      } catch (editError) {
+        console.warn(`Failed to edit message for user ${userId}:`, editError.message);
+        return await ctx.replyWithMarkdown(settings.channelDescription, {
+          reply_markup: {
+            inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
+          },
+        });
+      }
+    })();
+    // Сохраняем message_id в сессии
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(aboutMessage.message_id);
   } catch (error) {
     console.error(`Error in about for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
+    const errorMessage = await ctx.reply('Произошла ошибка. Попробуйте позже.');
+    ctx.session.botMessages = ctx.session.botMessages || [];
+    ctx.session.botMessages.push(errorMessage.message_id);
   }
 });
 
