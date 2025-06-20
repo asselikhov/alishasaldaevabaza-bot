@@ -92,7 +92,7 @@ function validateYookassaWebhook(req) {
   }
 
   // Разбираем заголовок signature
-  const [version, timestamp, signature] = signatureHeader.split(' ');
+  const [version, timestamp, , signature] = signatureHeader.split(' '); // Четвёртый элемент — подпись
   if (version !== 'v1' || !timestamp || !signature) {
     console.error('[WEBHOOK] YooKassa webhook validation failed: Invalid signature format');
     return false;
@@ -101,7 +101,7 @@ function validateYookassaWebhook(req) {
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
   const hmac = crypto.createHmac('sha256', secretKey);
   hmac.update(`${timestamp}.${req.body.toString()}`);
-  const computedSignature = hmac.digest('base64'); // Изменено на base64 для соответствия формату YooKassa
+  const computedSignature = hmac.digest('base64');
 
   if (computedSignature !== signature) {
     console.error(`[WEBHOOK] YooKassa webhook validation failed: Signature mismatch. Expected: ${computedSignature}, Received: ${signature}`);
