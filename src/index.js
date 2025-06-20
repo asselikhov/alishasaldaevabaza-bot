@@ -85,23 +85,30 @@ console.log('Parsed adminIds:', [...adminIds]);
 
 // Функция валидации вебхука YooKassa
 function validateYookassaWebhook(req) {
-  const signature = req.headers['x-hmac-signature'];
-  if (!signature) {
-    console.error('YooKassa webhook validation failed: Missing X-Hmac-Signature header');
+  const signatureHeader = req.headers['signature'];
+  if (!signatureHeader) {
+    console.error('[WEBHOOK] YooKassa webhook validation failed: Missing signature header');
+    return false;
+  }
+
+  // Разбираем заголовок signature
+  const [version, timestamp, signature] = signatureHeader.split(' ');
+  if (version !== 'v1' || !timestamp || !signature) {
+    console.error('[WEBHOOK] YooKassa webhook validation failed: Invalid signature format');
     return false;
   }
 
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
   const hmac = crypto.createHmac('sha256', secretKey);
-  hmac.update(req.body);
-  const computedSignature = hmac.digest('base64');
+  hmac.update(`${timestamp}.${req.body.toString()}`);
+  const computedSignature = hmac.digest('hex');
 
   if (computedSignature !== signature) {
-    console.error(`YooKassa webhook validation failed: Signature mismatch. Expected: ${computedSignature}, Received: ${signature}`);
+    console.error(`[WEBHOOK] YooKassa webhook validation failed: Signature mismatch. Expected: ${computedSignature}, Received: ${signature}`);
     return false;
   }
 
-  console.log('YooKassa webhook signature validated successfully');
+  console.log('[WEBHOOK] YooKassa webhook signature validated successfully');
   return true;
 }
 
