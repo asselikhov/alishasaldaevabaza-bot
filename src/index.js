@@ -92,15 +92,21 @@ function validateYookassaWebhook(req) {
   }
 
   // Разбираем заголовок signature
-  const [version, timestamp, , signature] = signatureHeader.split(' '); // Четвёртый элемент — подпись
-  if (version !== 'v1' || !timestamp || !signature) {
+  const parts = signatureHeader.split(' ');
+  if (parts.length < 4 || parts[0] !== 'v1') {
     console.error('[WEBHOOK] YooKassa webhook validation failed: Invalid signature format');
     return false;
   }
 
+  const timestamp = parts[1]; // Второй элемент — временная метка
+  const signature = parts[3]; // Четвёртый элемент — подпись
+
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
   const hmac = crypto.createHmac('sha256', secretKey);
-  hmac.update(`${timestamp}.${req.body.toString()}`);
+
+  // Формируем данные для подписи: timestamp + '.' + тело запроса (в виде буфера)
+  const data = `${timestamp}.${req.body.toString('utf8')}`;
+  hmac.update(data);
   const computedSignature = hmac.digest('base64');
 
   if (computedSignature !== signature) {
@@ -908,7 +914,6 @@ app.get('/health', (req, res) => res.sendStatus(200));
 app.post('/webhook/yookassa', async (req, res) => {
   try {
     console.log(`[WEBHOOK] Received YooKassa webhook at ${new Date().toISOString()} with headers:`, req.headers);
-    // Валидация подписи вебхука
     if (!validateYookassaWebhook(req)) {
       console.error('[WEBHOOK] Invalid YooKassa webhook signature');
       for (const adminId of adminIds) {
@@ -920,8 +925,8 @@ app.post('/webhook/yookassa', async (req, res) => {
       return res.status(400).send('Invalid webhook signature');
     }
 
-    // Парсим тело запроса после валидации
-    const body = JSON.parse(req.body.toString());
+    // Парсим тело как JSON
+    const body = JSON.parse(req.body.toString('utf8'));
     console.log('[WEBHOOK] Parsed YooKassa webhook body:', JSON.stringify(body));
 
     const { event, object } = body;
