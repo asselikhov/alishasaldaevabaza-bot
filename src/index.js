@@ -792,11 +792,13 @@ async function processPayment(ctx, userId, chatId) {
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 15000))
     ]);
 
+    // Убедимся, что paymentId сохраняется
     await User.updateOne(
         { userId },
         { paymentId: payment.id, localPaymentId, paymentStatus: 'pending', chatId, lastActivity: new Date() },
         { upsert: true }
     );
+    console.log(`[PAYMENT] Saved paymentId ${payment.id} for user ${userId}`);
 
     await ctx.reply('Перейдите по ссылке для оплаты:', {
       parse_mode: 'Markdown',
@@ -912,23 +914,33 @@ app.post('/webhook/yookassa', async (req, res) => {
     const { event, object } = body;
     if (event === 'payment.succeeded') {
       console.log(`[WEBHOOK] Processing payment.succeeded for paymentId: ${object.id}`);
-      const user = await User.findOne({ paymentId: object.id });
-      if (user) {
-        console.log(`[WEBHOOK] Found user ${user.userId} for paymentId ${object.id}, joinedChannel: ${user.joinedChannel}`);
-        if (!user.joinedChannel) {
-          console.log(`[WEBHOOK] Sending invite link for user ${user.userId}`);
-          await sendInviteLink(user, { chat: { id: user.chatId } }, object.id);
-        } else {
-          console.log(`[WEBHOOK] User ${user.userId} already joined, skipping invite link`);
+      let user = await User.findOne({ paymentId: object.id });
+      if (!user) {
+        console.warn(`[WEBHOOK] No user found for paymentId: ${object.id}, searching by metadata or creating...`);
+        // Поиск по metadata, если доступно
+        const metadataUserId = object.metadata?.userId;
+        if (metadataUserId) {
+          user = await User.findOne({ userId: metadataUserId });
         }
+        if (!user) {
+          // Создание временной записи, если пользователь не найден
+          user = await User.create({
+            userId: metadataUserId || `unknown_${object.id}`,
+            chatId: null,
+            paymentId: object.id,
+            paymentStatus: 'pending',
+            lastActivity: new Date(),
+          });
+          console.log(`[WEBHOOK] Created temporary user: ${user.userId} for paymentId ${object.id}`);
+        }
+      }
+
+      console.log(`[WEBHOOK] Found user ${user.userId} for paymentId ${object.id}, joinedChannel: ${user.joinedChannel}`);
+      if (!user.joinedChannel) {
+        console.log(`[WEBHOOK] Sending invite link for user ${user.userId}`);
+        await sendInviteLink(user, { chat: { id: user.chatId || (await getSettings()).supportLink } }, object.id);
       } else {
-        console.warn(`[WEBHOOK] No user found for paymentId: ${object.id}`);
-        for (const adminId of adminIds) {
-          await bot.telegram.sendMessage(
-              adminId,
-              `Ошибка: Пользователь не найден для paymentId: ${object.id}`
-          );
-        }
+        console.log(`[WEBHOOK] User ${user.userId} already joined, skipping invite link`);
       }
     } else {
       console.log(`[WEBHOOK] Received unhandled event: ${event}`);
