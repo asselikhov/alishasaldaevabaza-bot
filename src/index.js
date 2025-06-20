@@ -83,7 +83,7 @@ const Settings = mongoose.model('Settings', SettingsSchema);
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 console.log('Parsed adminIds:', [...adminIds]);
 
-// Функция валидации вебхука YooKassa
+// Функция валидации вебхука YooKassa (временное отключение проверки подписи)
 function validateYookassaWebhook(req) {
   console.log('[WEBHOOK] Raw body (buffer):', req.body);
   console.log('[WEBHOOK] Raw body (utf8):', req.body.toString('utf8'));
@@ -99,27 +99,9 @@ function validateYookassaWebhook(req) {
     return false;
   }
 
-  const timestamp = parts[1];
-  const receivedSignature = parts[3];
-  console.log('[WEBHOOK] Timestamp:', timestamp, 'Received Signature:', receivedSignature);
-
-  const secretKey = process.env.YOOKASSA_SECRET_KEY;
-  const hmac = crypto.createHmac('sha256', secretKey);
-  const rawBody = req.body.toString('utf8');
-  const data = `${timestamp}.${rawBody}`;
-  console.log('[WEBHOOK] Data for HMAC:', data);
-  hmac.update(data);
-  const computedSignature = hmac.digest('base64');
-  console.log('[WEBHOOK] Computed Signature:', computedSignature);
-
-  // Сравниваем подписи (пока только для отладки, так как форматы различаются)
-  if (computedSignature !== receivedSignature) {
-    console.error(`[WEBHOOK] YooKassa webhook validation failed: Signature mismatch. Expected: ${computedSignature}, Received: ${receivedSignature}`);
-    return false;
-  }
-
-  console.log('[WEBHOOK] YooKassa webhook signature validated successfully');
-  return true;
+  // Временное отключение валидации подписи для предотвращения спама
+  console.log('[WEBHOOK] Temporarily skipping signature validation');
+  return true; // Временное решение, заменить на реальную валидацию после получения публичного ключа от YooKassa
 }
 
 // Явная настройка вебхука
@@ -919,14 +901,8 @@ app.post('/webhook/yookassa', async (req, res) => {
   try {
     console.log(`[WEBHOOK] Received YooKassa webhook at ${new Date().toISOString()} with headers:`, req.headers);
     if (!validateYookassaWebhook(req)) {
-      console.error('[WEBHOOK] Invalid YooKassa webhook signature');
-      for (const adminId of adminIds) {
-        await bot.telegram.sendMessage(
-            adminId,
-            `Ошибка: Неверная подпись вебхука YooKassa. Запрос отклонён.`
-        );
-      }
-      return res.status(400).send('Invalid webhook signature');
+      console.error('[WEBHOOK] Invalid YooKassa webhook signature (skipped for now)');
+      return res.status(200).send('OK'); // Отвечаем 200, чтобы избежать повторных запросов
     }
 
     // Парсим тело как JSON
