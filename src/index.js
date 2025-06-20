@@ -54,7 +54,7 @@ const UserSchema = new mongoose.Schema({
   chatId: String,
   paymentStatus: { type: String, default: 'pending' },
   paymentId: String,
-  localPaymentId: String, // Новое поле для локального ID
+  localPaymentId: String,
   joinedChannel: { type: Boolean, default: false },
   inviteLink: String,
   inviteLinkExpires: Number,
@@ -74,8 +74,8 @@ const SettingsSchema = new mongoose.Schema({
   channelDescription: { type: String, default: 'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊' },
   supportLink: { type: String, default: 'https://t.me/Eagleshot' },
   welcomeMessage: { type: String, default: 'ЙОУ ЧИКСЫ 😎\n\nЯ рада видеть вас здесь, лютые модницы 💅\n\nДержите меня семеро, потому что я вас научу пипэц как выгодно брать шмотьё🤭🤫\n\nЖду вас в своём клубе шаболятниц 🤝❤️' },
-  paymentAmount: { type: Number, default: 399 }, // Добавлено поле для суммы оплаты
-  paidWelcomeMessage: { type: String, default: '🎉 Добро пожаловать в закрытый клуб модниц! 🎉\n\nВы успешно оплатили доступ к эксклюзивному контенту. Наслаждайтесь шопингом и стильными находками! 💃\n\nЕсли есть вопросы, я всегда рядом!' }, // Новое поле для приветствия после оплаты
+  paymentAmount: { type: Number, default: 399 },
+  paidWelcomeMessage: { type: String, default: '🎉 Добро пожаловать в закрытый клуб модниц! 🎉\n\nВы успешно оплатили доступ к эксклюзивному контенту. Наслаждайтесь шопингом и стильными находками! 💃\n\nЕсли есть вопросы, я всегда рядом!' },
 });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
@@ -84,7 +84,7 @@ const Settings = mongoose.model('Settings', SettingsSchema);
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 console.log('Parsed adminIds:', [...adminIds]);
 
-// Функция валидации вебхука YooKassa (временное отключение проверки подписи)
+// Функция валидации вебхука YooKassa
 function validateYookassaWebhook(req) {
   console.log('[WEBHOOK] Raw body (buffer):', req.body);
   console.log('[WEBHOOK] Raw body (utf8):', req.body.toString('utf8'));
@@ -100,9 +100,8 @@ function validateYookassaWebhook(req) {
     return false;
   }
 
-  // Временное отключение валидации подписи для предотвращения спама
   console.log('[WEBHOOK] Temporarily skipping signature validation');
-  return true; // Временное решение, заменить на реальную валидацию после получения публичного ключа от YooKassa
+  return true;
 }
 
 // Явная настройка вебхука
@@ -136,19 +135,16 @@ async function getSettings() {
   return cachedSettings;
 }
 
-// Текст приветственного сообщения
 async function getWelcomeMessage() {
   const settings = await getSettings();
   return settings.welcomeMessage;
 }
 
-// Текст приветственного сообщения для оплаченных пользователей
 async function getPaidWelcomeMessage() {
   const settings = await getSettings();
   return settings.paidWelcomeMessage;
 }
 
-// Функция для создания и отправки постоянной ссылки
 async function sendInviteLink(user, ctx, paymentId) {
   try {
     console.log(`[INVITE] Processing invite link for user ${user.userId}, paymentId: ${paymentId}`);
@@ -156,7 +152,7 @@ async function sendInviteLink(user, ctx, paymentId) {
       console.log(`[INVITE] User ${user.userId} already has a valid invite link: ${user.inviteLink}`);
       await bot.telegram.sendMessage(
           user.chatId,
-          'Оплата прошла успешно! 🎉 Ваша персональная ссылка для вступления в закрытый канал уже отправлена ранее:' + '\n\n' + await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')',
+          await getPaidWelcomeMessage(),
           {
             parse_mode: 'Markdown',
             reply_markup: {
@@ -167,6 +163,16 @@ async function sendInviteLink(user, ctx, paymentId) {
             },
           }
       );
+      await bot.telegram.sendMessage(
+          user.chatId,
+          'Ваша уникальная ссылка для вступления в закрытый канал:',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+            },
+          }
+      );
       return;
     }
 
@@ -174,18 +180,17 @@ async function sendInviteLink(user, ctx, paymentId) {
         process.env.CHANNEL_ID,
         {
           name: `Invite for user_${user.userId}`,
+          member_limit: 1,
           creates_join_request: false,
         }
     );
     console.log(`[INVITE] Created invite link: ${chatInvite.invite_link} for user ${user.userId}`);
 
-    // Получение данных платежа из YooKassa
     const paymentData = await getPayment(paymentId);
     if (paymentData.status !== 'succeeded') {
       throw new Error(`[INVITE] Payment ${paymentId} status is ${paymentData.status}, expected succeeded`);
     }
 
-    // Генерация текста чека на основе данных из YooKassa
     const paymentText = `Платежный документ\n` +
         `ID транзакции: ${paymentId}\n` +
         `Сумма: ${paymentData.amount.value} ${paymentData.amount.currency}\n` +
@@ -194,7 +199,6 @@ async function sendInviteLink(user, ctx, paymentId) {
         `Пользователь: ${user.userId}\n` +
         `Email: ${paymentData.receipt?.customer?.email || user.email || 'N/A'}`;
 
-    // Отправка чека в группу
     const paymentDoc = await bot.telegram.sendDocument(
         process.env.PAYMENT_GROUP_ID,
         {
@@ -209,14 +213,13 @@ async function sendInviteLink(user, ctx, paymentId) {
 
     const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.replace('-100', '')}/${paymentDoc.message_id}`;
 
-    // Обновление данных пользователя
     await User.updateOne(
         { userId: user.userId, paymentId },
         {
           paymentStatus: 'succeeded',
           joinedChannel: true,
           inviteLink: chatInvite.invite_link,
-          inviteLinkExpires: null, // Постоянная ссылка
+          inviteLinkExpires: null,
           paymentDate: new Date(paymentData.created_at),
           paymentDocument,
           lastActivity: new Date(),
@@ -224,40 +227,30 @@ async function sendInviteLink(user, ctx, paymentId) {
     );
     console.log(`[INVITE] User ${user.userId} updated with invite link and payment details`);
 
-    // Удаление сообщений, отправленных ботом, из сессии
-    ctx.session = ctx.session || {};
-    const botMessages = ctx.session.botMessages || [];
-    for (const messageId of botMessages) {
-      try {
-        await bot.telegram.deleteMessage(user.chatId, messageId);
-        console.log(`[INVITE] Deleted bot message ${messageId} for user ${user.userId}`);
-      } catch (deleteError) {
-        console.warn(`[INVITE] Failed to delete message ${messageId} for user ${user.userId}:`, deleteError.message);
-      }
-    }
-    ctx.session.botMessages = []; // Очищаем список после удаления
-
-    // Отправка приветственного сообщения для оплаченных пользователей
-    const settings = await getSettings();
-    const welcomeMessage = await bot.telegram.sendMessage(
+    await bot.telegram.sendMessage(
         user.chatId,
-        await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + chatInvite.invite_link + ')',
+        await getPaidWelcomeMessage(),
         {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
-              [{ text: '💬 Техподдержка', url: settings.supportLink }],
+              [{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }],
               [{ text: '💡 О канале', callback_data: 'about' }],
             ],
           },
         }
     );
-    // Сохраняем message_id нового сообщения в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(welcomeMessage.message_id);
-    console.log(`[INVITE] Welcome message sent to user ${user.userId}, message_id: ${welcomeMessage.message_id}`);
+    await bot.telegram.sendMessage(
+        user.chatId,
+        'Ваша уникальная ссылка для вступления в закрытый канал:',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
+          },
+        }
+    );
 
-    // Уведомление администраторов
     for (const adminId of adminIds) {
       await bot.telegram.sendMessage(
           adminId,
@@ -269,7 +262,7 @@ async function sendInviteLink(user, ctx, paymentId) {
     console.error(`[INVITE] Error sending invite link for user ${user.userId}:`, error.message, error.stack);
     await bot.telegram.sendMessage(
         user.chatId,
-        'Ошибка при создании персональной ссылки на канал. Пожалуйста, свяжитесь с поддержкой.',
+        'Ошибка при создании одноразовой ссылки на канал. Пожалуйста, свяжитесь с поддержкой.',
         {
           reply_markup: {
             inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]],
@@ -285,7 +278,6 @@ async function sendInviteLink(user, ctx, paymentId) {
   }
 }
 
-// Команда /checkpayment
 bot.command('checkpayment', async (ctx) => {
   const userId = String(ctx.from.id);
   try {
@@ -296,7 +288,7 @@ bot.command('checkpayment', async (ctx) => {
     }
 
     if (user.paymentStatus === 'succeeded' && user.inviteLink) {
-      return ctx.reply('Ваш платёж уже подтверждён! ' + await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')', {
+      await ctx.reply(await getPaidWelcomeMessage(), {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -305,6 +297,13 @@ bot.command('checkpayment', async (ctx) => {
           ],
         },
       });
+      await ctx.reply('Ваша уникальная ссылка для вступления в закрытый канал:', {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+        },
+      });
+      return;
     }
 
     const payment = await getPayment(user.paymentId);
@@ -327,7 +326,6 @@ bot.command('checkpayment', async (ctx) => {
   }
 });
 
-// Обработчик команды /start
 bot.start(async (ctx) => {
   console.log(`Received /start command from ${ctx.from.id}`);
   const userId = String(ctx.from.id);
@@ -355,25 +353,17 @@ bot.start(async (ctx) => {
 
     const settings = await getSettings();
     console.log(`Sending reply to ${userId}`);
-    if (user.paymentStatus === 'succeeded' && user.inviteLink) {
-      const paidWelcomeMessage = await bot.telegram.sendMessage(
-          chatId,
-          await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')',
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '💬 Техподдержка', url: settings.supportLink }],
-                [{ text: '💡 О канале', callback_data: 'about' }],
-              ],
-            },
-          }
-      );
-      ctx.session = ctx.session || {};
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(paidWelcomeMessage.message_id);
+    if (user.paymentStatus === 'succeeded') {
+      await ctx.replyWithMarkdown(await getPaidWelcomeMessage(), {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💬 Техподдержка', url: settings.supportLink }],
+            [{ text: '💡 О канале', callback_data: 'about' }],
+          ],
+        },
+      });
     } else {
-      const welcomeMessage = await ctx.replyWithMarkdown(await getWelcomeMessage(), {
+      await ctx.replyWithMarkdown(await getWelcomeMessage(), {
         reply_markup: {
           inline_keyboard: [
             [
@@ -387,9 +377,6 @@ bot.start(async (ctx) => {
           ],
         },
       });
-      ctx.session = ctx.session || {};
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(welcomeMessage.message_id);
     }
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
@@ -411,7 +398,7 @@ bot.action('admin_panel', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('start');
-    const adminMessage = await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+    await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
@@ -422,9 +409,6 @@ bot.action('admin_panel', async (ctx) => {
         ],
       },
     });
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(adminMessage.message_id);
   } catch (error) {
     console.error(`Error in admin panel for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при открытии админ-панели.');
@@ -471,15 +455,12 @@ ${activeUsersList}
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
 
-    const statsMessageObj = await ctx.editMessageText(statsMessage, {
+    await ctx.editMessageText(statsMessage, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
       },
     });
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(statsMessageObj.message_id);
   } catch (error) {
     console.error(`Error in stats for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
@@ -575,13 +556,10 @@ bot.action('export_subscribers', async (ctx) => {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const docMessage = await ctx.replyWithDocument({
+    await ctx.replyWithDocument({
       source: buffer,
       filename: `subscribers_${new Date().toISOString().split('T')[0]}.xlsx`,
     });
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(docMessage.message_id);
   } catch (error) {
     console.error(`Error in export_subscribers for user ${userId}:`, error.message);
     await ctx.reply('Ошибка передачи подписчиков. Попробуйте позже.');
@@ -615,25 +593,24 @@ bot.action('back', async (ctx) => {
           ],
         },
       };
-      const backMessage = await (user.paymentStatus === 'succeeded' && user.inviteLink
-          ? ctx.editMessageText(await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')', {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '💬 Техподдержка', url: settings.supportLink }],
-                [{ text: '💡 О канале', callback_data: 'about' }],
-              ],
-            },
-          })
-          : ctx.editMessageText(await getWelcomeMessage(), {
-            parse_mode: 'Markdown',
-            reply_markup: replyMarkup.reply_markup,
-          }));
-      // Сохраняем message_id в сессии
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(backMessage.message_id);
+      if (user.paymentStatus === 'succeeded' && user.inviteLink) {
+        await ctx.editMessageText(await getPaidWelcomeMessage(), {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💬 Техподдержка', url: settings.supportLink }],
+              [{ text: '💡 О канале', callback_data: 'about' }],
+            ],
+          },
+        });
+      } else {
+        await ctx.editMessageText(await getWelcomeMessage(), {
+          parse_mode: 'Markdown',
+          reply_markup: replyMarkup.reply_markup,
+        });
+      }
     } else if (lastAction === 'admin_panel') {
-      const adminMessage = await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+      await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -644,9 +621,6 @@ bot.action('back', async (ctx) => {
           ],
         },
       });
-      // Сохраняем message_id в сессии
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(adminMessage.message_id);
     }
   } catch (error) {
     console.error(`Error in back for user ${userId}:`, error.stack);
@@ -667,7 +641,7 @@ bot.action('edit', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
-    const editMessage = await ctx.editMessageText('Выберите, что редактировать:', {
+    await ctx.editMessageText('Выберите, что редактировать:', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
@@ -680,9 +654,6 @@ bot.action('edit', async (ctx) => {
         ],
       },
     });
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(editMessage.message_id);
   } catch (error) {
     console.error(`Error in edit for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при выборе редактирования.');
@@ -701,10 +672,7 @@ bot.action('edit_channel', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'channelDescription';
-    const editChannelMessage = await ctx.reply('Введите новое описание канала:');
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(editChannelMessage.message_id);
+    await ctx.reply('Введите новое описание канала:');
   } catch (error) {
     console.error(`Error in edit_channel for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе описания канала.');
@@ -723,10 +691,7 @@ bot.action('edit_support', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'supportLink';
-    const editSupportMessage = await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(editSupportMessage.message_id);
+    await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
   } catch (error) {
     console.error(`Error in edit_support for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе ссылки техподдержки.');
@@ -745,10 +710,7 @@ bot.action('edit_welcome', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'welcomeMessage';
-    const editWelcomeMessage = await ctx.reply('Введите новое приветственное сообщение:');
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(editWelcomeMessage.message_id);
+    await ctx.reply('Введите новое приветственное сообщение:');
   } catch (error) {
     console.error(`Error in edit_welcome for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе приветственного сообщения.');
@@ -767,10 +729,7 @@ bot.action('edit_payment_amount', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'paymentAmount';
-    const editAmountMessage = await ctx.reply('Введите новую сумму оплаты в рублях (например, 499):');
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(editAmountMessage.message_id);
+    await ctx.reply('Введите новую сумму оплаты в рублях (например, 499):');
   } catch (error) {
     console.error(`Error in edit_payment_amount for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе суммы оплаты.');
@@ -789,10 +748,7 @@ bot.action('edit_paid_welcome', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'paidWelcomeMessage';
-    const editPaidWelcomeMessage = await ctx.reply('Введите новое приветственное сообщение для пользователей после оплаты:');
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(editPaidWelcomeMessage.message_id);
+    await ctx.reply('Введите новое приветственное сообщение для пользователей после оплаты:');
   } catch (error) {
     console.error(`Error in edit_paid_welcome for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе приветственного сообщения после оплаты.');
@@ -811,16 +767,11 @@ bot.on('text', async (ctx) => {
     if (ctx.session.waitingForEmail) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(text)) {
-        const errorMessage = await ctx.reply('Пожалуйста, введите действительный email (например, user@example.com):');
-        ctx.session.botMessages = ctx.session.botMessages || [];
-        ctx.session.botMessages.push(errorMessage.message_id);
-        return;
+        return ctx.reply('Пожалуйста, введите действительный email (например, user@example.com):');
       }
       await User.updateOne({ userId }, { email: text });
       ctx.session.waitingForEmail = false;
-      const successMessage = await ctx.reply('Email сохранён! Перехожу к созданию платежа...');
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(successMessage.message_id);
+      await ctx.reply('Email сохранён! Перехожу к созданию платежа...');
       return await processPayment(ctx, userId, String(ctx.chat.id));
     }
 
@@ -830,10 +781,7 @@ bot.on('text', async (ctx) => {
 
     if (ctx.session.editing === 'channelDescription') {
       if (text.length < 10) {
-        const errorMessage = await ctx.reply('Описание должно быть не короче 10 символов. Попробуйте снова:');
-        ctx.session.botMessages = ctx.session.botMessages || [];
-        ctx.session.botMessages.push(errorMessage.message_id);
-        return;
+        return ctx.reply('Описание должно быть не короче 10 символов. Попробуйте снова:');
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -841,18 +789,13 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      const successMessage = await ctx.reply('Описание канала обновлено!');
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(successMessage.message_id);
+      await ctx.reply('Описание канала обновлено!');
     } else if (ctx.session.editing === 'supportLink') {
       let supportLink = text;
       if (supportLink.startsWith('@')) {
         supportLink = `https://t.me/${supportLink.slice(1)}`;
       } else if (!supportLink.match(/^https?:\/\//)) {
-        const errorMessage = await ctx.reply('Введите действительный URL или Telegram-username (например, @Username). Попробуйте снова:');
-        ctx.session.botMessages = ctx.session.botMessages || [];
-        ctx.session.botMessages.push(errorMessage.message_id);
-        return;
+        return ctx.reply('Введите действительный URL или Telegram-username (например, @Username). Попробуйте снова:');
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -860,15 +803,10 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      const successMessage = await ctx.reply('Ссылка на техподдержку обновлена!');
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(successMessage.message_id);
+      await ctx.reply('Ссылка на техподдержку обновлена!');
     } else if (ctx.session.editing === 'welcomeMessage') {
       if (text.length < 10) {
-        const errorMessage = await ctx.reply('Приветственное сообщение должно быть не короче 10 символов. Попробуйте снова:');
-        ctx.session.botMessages = ctx.session.botMessages || [];
-        ctx.session.botMessages.push(errorMessage.message_id);
-        return;
+        return ctx.reply('Приветственное сообщение должно быть не короче 10 символов. Попробуйте снова:');
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -876,16 +814,11 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      const successMessage = await ctx.reply('Приветственное сообщение обновлено!');
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(successMessage.message_id);
+      await ctx.reply('Приветственное сообщение обновлено!');
     } else if (ctx.session.editing === 'paymentAmount') {
       const amount = parseFloat(text);
       if (isNaN(amount) || amount <= 0) {
-        const errorMessage = await ctx.reply('Пожалуйста, введите корректную сумму больше 0 (например, 499):');
-        ctx.session.botMessages = ctx.session.botMessages || [];
-        ctx.session.botMessages.push(errorMessage.message_id);
-        return;
+        return ctx.reply('Пожалуйста, введите корректную сумму больше 0 (например, 499):');
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -893,15 +826,10 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      const successMessage = await ctx.reply(`Сумма оплаты обновлена на ${amount} руб.!`);
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(successMessage.message_id);
+      await ctx.reply(`Сумма оплаты обновлена на ${amount} руб.!`);
     } else if (ctx.session.editing === 'paidWelcomeMessage') {
       if (text.length < 10) {
-        const errorMessage = await ctx.reply('Приветственное сообщение после оплаты должно быть не короче 10 символов. Попробуйте снова:');
-        ctx.session.botMessages = ctx.session.botMessages || [];
-        ctx.session.botMessages.push(errorMessage.message_id);
-        return;
+        return ctx.reply('Приветственное сообщение после оплаты должно быть не короче 10 символов. Попробуйте снова:');
       }
       cachedSettings = await Settings.findOneAndUpdate(
           {},
@@ -909,36 +837,25 @@ bot.on('text', async (ctx) => {
           { upsert: true, new: true }
       );
       ctx.session.editing = null;
-      const successMessage = await ctx.reply('Приветственное сообщение после оплаты обновлено!');
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(successMessage.message_id);
+      await ctx.reply('Приветственное сообщение после оплаты обновлено!');
     }
   } catch (error) {
     console.error(`Error processing text input for user ${userId}:`, error.stack);
-    const errorMessage = await ctx.reply('Ошибка при сохранении изменений. Попробуйте снова.');
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(errorMessage.message_id);
+    await ctx.reply('Ошибка при сохранении изменений. Попробуйте снова.');
   }
 });
 
-// Функция обработки платежа
 async function processPayment(ctx, userId, chatId) {
   try {
     console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
-      const existingMessage = await ctx.reply('Вы уже оплатили доступ! ' + await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')', {
+      return ctx.reply('Вы уже оплатили доступ! Вот ваша одноразовая ссылка:', {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [
-            [{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }],
-            [{ text: '💡 О канале', callback_data: 'about' }],
-          ],
+          inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
         },
       });
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(existingMessage.message_id);
-      return;
     }
 
     const settings = await getSettings();
@@ -956,7 +873,6 @@ async function processPayment(ctx, userId, chatId) {
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 15000))
     ]);
 
-    // Убедимся, что paymentId сохраняется
     await User.updateOne(
         { userId },
         { paymentId: payment.id, localPaymentId, paymentStatus: 'pending', chatId, lastActivity: new Date() },
@@ -964,27 +880,22 @@ async function processPayment(ctx, userId, chatId) {
     );
     console.log(`[PAYMENT] Saved paymentId ${payment.id} for user ${userId}`);
 
-    const paymentMessage = await ctx.reply('Перейдите по ссылке для оплаты:', {
+    await ctx.reply('Перейдите по ссылке для оплаты:', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[{ text: 'Оплатить', url: payment.confirmation.confirmation_url }]],
       },
     });
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(paymentMessage.message_id);
   } catch (error) {
     console.error(`Payment error for user ${userId}:`, error.message);
-    const errorMessage = await ctx.reply('Ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.', {
+    await ctx.reply('Ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.', {
       reply_markup: {
         inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]],
       },
     });
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(errorMessage.message_id);
   }
 }
 
-// Обработчик кнопки "Купить"
 bot.action('buy', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
@@ -996,61 +907,47 @@ bot.action('buy', async (ctx) => {
     if (!user.email) {
       ctx.session = ctx.session || {};
       ctx.session.waitingForEmail = true;
-      const emailMessage = await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты:');
-      ctx.session.botMessages = ctx.session.botMessages || [];
-      ctx.session.botMessages.push(emailMessage.message_id);
+      await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты:');
       return;
     }
     await processPayment(ctx, userId, chatId);
   } catch (error) {
     console.error(`Error in buy for user ${userId}:`, error.message);
-    const errorMessage = await ctx.reply('Произошла ошибка. Попробуйте позже.');
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(errorMessage.message_id);
+    await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
 
-// Обработчик кнопки "О канале"
 bot.action('about', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
   try {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const settings = await getSettings();
-    const aboutMessage = await (async () => {
-      try {
-        return await ctx.editMessageText(settings.channelDescription, {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
-          },
-        });
-      } catch (editError) {
-        console.warn(`Failed to edit message for user ${userId}:`, editError.message);
-        return await ctx.replyWithMarkdown(settings.channelDescription, {
-          reply_markup: {
-            inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
-          },
-        });
-      }
-    })();
-    // Сохраняем message_id в сессии
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(aboutMessage.message_id);
+    try {
+      await ctx.editMessageText(settings.channelDescription, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
+        },
+      });
+    } catch (editError) {
+      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
+      await ctx.replyWithMarkdown(settings.channelDescription, {
+        reply_markup: {
+          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
+        },
+      });
+    }
   } catch (error) {
     console.error(`Error in about for user ${userId}:`, error.stack);
-    const errorMessage = await ctx.reply('Произошла ошибка. Попробуйте позже.');
-    ctx.session.botMessages = ctx.session.botMessages || [];
-    ctx.session.botMessages.push(errorMessage.message_id);
+    await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
 
-// Обработчик корневого пути
 app.get('/', (req, res) => {
   res.send('Это API бота alishasaldaevabaza-bot. Используйте /health или /ping для проверки статуса или обратитесь к боту в Telegram.');
 });
 
-// Обработка возврата от ЮKassa
 app.get('/return', async (req, res) => {
   console.log('Received /return request with query:', req.query);
   const { paymentId: localPaymentId } = req.query;
@@ -1074,19 +971,16 @@ app.get('/return', async (req, res) => {
   res.send('Оплата обработана! Вы будете перенаправлены в Telegram.');
 });
 
-// Health check для Render
 app.get('/health', (req, res) => res.sendStatus(200));
 
-// Вебхук для ЮKassa
 app.post('/webhook/yookassa', async (req, res) => {
   try {
     console.log(`[WEBHOOK] Received YooKassa webhook at ${new Date().toISOString()} with headers:`, req.headers);
     if (!validateYookassaWebhook(req)) {
       console.error('[WEBHOOK] Invalid YooKassa webhook signature (skipped for now)');
-      return res.status(200).send('OK'); // Отвечаем 200, чтобы избежать повторных запросов
+      return res.status(200).send('OK');
     }
 
-    // Парсим тело как JSON
     const body = JSON.parse(req.body.toString('utf8'));
     console.log('[WEBHOOK] Parsed YooKassa webhook body:', JSON.stringify(body));
 
@@ -1096,13 +990,11 @@ app.post('/webhook/yookassa', async (req, res) => {
       let user = await User.findOne({ paymentId: object.id });
       if (!user) {
         console.warn(`[WEBHOOK] No user found for paymentId: ${object.id}, searching by metadata or creating...`);
-        // Поиск по metadata, если доступно
         const metadataUserId = object.metadata?.userId;
         if (metadataUserId) {
           user = await User.findOne({ userId: metadataUserId });
         }
         if (!user) {
-          // Создание временной записи, если пользователь не найден
           user = await User.create({
             userId: metadataUserId || `unknown_${object.id}`,
             chatId: null,
@@ -1127,11 +1019,10 @@ app.post('/webhook/yookassa', async (req, res) => {
     res.sendStatus(200);
   } catch (error) {
     console.error('[WEBHOOK] Error in Yookassa webhook:', error.message, error.stack);
-    res.sendStatus(200); // ЮKassa ожидает 200 даже при ошибке
+    res.sendStatus(200);
   }
 });
 
-// Запуск сервера
 const PORT = process.env.PORT || 5000;
 console.log(`Starting server on port ${PORT}`);
 app.listen(PORT, () => {
