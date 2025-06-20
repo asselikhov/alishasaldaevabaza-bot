@@ -145,8 +145,9 @@ async function getWelcomeMessage() {
 // Функция для создания и отправки одноразовой ссылки
 async function sendInviteLink(user, ctx, paymentId) {
   try {
+    console.log(`[INVITE] Processing invite link for user ${user.userId}, paymentId: ${paymentId}`);
     if (user.inviteLink) {
-      console.log(`User ${user.userId} already has a valid invite link: ${user.inviteLink}`);
+      console.log(`[INVITE] User ${user.userId} already has a valid invite link: ${user.inviteLink}`);
       await bot.telegram.sendMessage(
           user.chatId,
           'Оплата прошла успешно! 🎉 Ваша одноразовая ссылка для вступления в закрытый канал уже отправлена ранее:',
@@ -168,11 +169,12 @@ async function sendInviteLink(user, ctx, paymentId) {
           creates_join_request: false,
         }
     );
+    console.log(`[INVITE] Created invite link: ${chatInvite.invite_link} for user ${user.userId}`);
 
     // Получение данных платежа из YooKassa
     const paymentData = await getPayment(paymentId);
     if (paymentData.status !== 'succeeded') {
-      throw new Error(`Payment ${paymentId} status is ${paymentData.status}, expected succeeded`);
+      throw new Error(`[INVITE] Payment ${paymentId} status is ${paymentData.status}, expected succeeded`);
     }
 
     // Генерация текста чека на основе данных из YooKassa
@@ -195,6 +197,7 @@ async function sendInviteLink(user, ctx, paymentId) {
           caption: `Документ оплаты для user_${user.userId}`,
         }
     );
+    console.log(`[INVITE] Payment document sent to group ${process.env.PAYMENT_GROUP_ID}, message_id: ${paymentDoc.message_id}`);
 
     const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.replace('-100', '')}/${paymentDoc.message_id}`;
 
@@ -211,6 +214,7 @@ async function sendInviteLink(user, ctx, paymentId) {
           lastActivity: new Date(),
         }
     );
+    console.log(`[INVITE] User ${user.userId} updated with invite link and payment details`);
 
     // Отправка ссылки пользователю
     await bot.telegram.sendMessage(
@@ -223,6 +227,7 @@ async function sendInviteLink(user, ctx, paymentId) {
           },
         }
     );
+    console.log(`[INVITE] Invite link sent to user ${user.userId}`);
 
     // Уведомление администраторов
     for (const adminId of adminIds) {
@@ -231,8 +236,9 @@ async function sendInviteLink(user, ctx, paymentId) {
           `Новый успешный платёж от user_${user.userId} (paymentId: ${paymentId}). Ссылка отправлена: ${chatInvite.invite_link}`
       );
     }
+    console.log(`[INVITE] Admin notification sent for user ${user.userId}`);
   } catch (error) {
-    console.error(`Error sending invite link for user ${user.userId}:`, error.message);
+    console.error(`[INVITE] Error sending invite link for user ${user.userId}:`, error.message, error.stack);
     await bot.telegram.sendMessage(
         user.chatId,
         'Ошибка при создании одноразовой ссылки на канал. Пожалуйста, свяжитесь с поддержкой.',
@@ -894,9 +900,10 @@ app.get('/health', (req, res) => res.sendStatus(200));
 // Вебхук для ЮKassa
 app.post('/webhook/yookassa', async (req, res) => {
   try {
+    console.log(`[WEBHOOK] Received YooKassa webhook at ${new Date().toISOString()} with headers:`, req.headers);
     // Валидация подписи вебхука
     if (!validateYookassaWebhook(req)) {
-      console.error('Invalid YooKassa webhook signature');
+      console.error('[WEBHOOK] Invalid YooKassa webhook signature');
       for (const adminId of adminIds) {
         await bot.telegram.sendMessage(
             adminId,
@@ -908,17 +915,22 @@ app.post('/webhook/yookassa', async (req, res) => {
 
     // Парсим тело запроса после валидации
     const body = JSON.parse(req.body.toString());
-    console.log('Received Yookassa webhook with body:', JSON.stringify(body));
+    console.log('[WEBHOOK] Parsed YooKassa webhook body:', JSON.stringify(body));
 
     const { event, object } = body;
     if (event === 'payment.succeeded') {
-      console.log(`Processing payment.succeeded for paymentId: ${object.id}`);
+      console.log(`[WEBHOOK] Processing payment.succeeded for paymentId: ${object.id}`);
       const user = await User.findOne({ paymentId: object.id });
-      if (user && !user.joinedChannel) {
-        console.log(`Sending invite link for user ${user.userId}`);
-        await sendInviteLink(user, { chat: { id: user.chatId } }, object.id);
-      } else if (!user) {
-        console.warn(`No user found for paymentId: ${object.id}`);
+      if (user) {
+        console.log(`[WEBHOOK] Found user ${user.userId} for paymentId ${object.id}, joinedChannel: ${user.joinedChannel}`);
+        if (!user.joinedChannel) {
+          console.log(`[WEBHOOK] Sending invite link for user ${user.userId}`);
+          await sendInviteLink(user, { chat: { id: user.chatId } }, object.id);
+        } else {
+          console.log(`[WEBHOOK] User ${user.userId} already joined, skipping invite link`);
+        }
+      } else {
+        console.warn(`[WEBHOOK] No user found for paymentId: ${object.id}`);
         for (const adminId of adminIds) {
           await bot.telegram.sendMessage(
               adminId,
@@ -927,11 +939,11 @@ app.post('/webhook/yookassa', async (req, res) => {
         }
       }
     } else {
-      console.log(`Received unhandled event: ${event}`);
+      console.log(`[WEBHOOK] Received unhandled event: ${event}`);
     }
     res.sendStatus(200);
   } catch (error) {
-    console.error('Error in Yookassa webhook:', error.message);
+    console.error('[WEBHOOK] Error in Yookassa webhook:', error.message, error.stack);
     res.sendStatus(200); // ЮKassa ожидает 200 даже при ошибке
   }
 });
