@@ -15,6 +15,18 @@ app.use((req, res, next) => {
   next();
 });
 
+// Проверка переменных окружения
+if (!process.env.BOT_TOKEN) {
+  console.error('BOT_TOKEN is not defined in environment variables');
+  process.exit(1);
+}
+if (!process.env.MONGODB_URI) {
+  console.error('MONGODB_URI is not defined in environment variables');
+  process.exit(1);
+}
+console.log('BOT_TOKEN is set:', process.env.BOT_TOKEN.length, 'characters');
+console.log('MONGODB_URI is set:', process.env.MONGODB_URI.length, 'characters');
+
 // Настройка Mongoose
 mongoose.set('strictQuery', true);
 mongoose.connect(process.env.MONGODB_URI)
@@ -22,16 +34,15 @@ mongoose.connect(process.env.MONGODB_URI)
       console.log('Connected to MongoDB via Mongoose');
     })
     .catch(err => {
-      console.error('MongoDB connection error:', err.stack);
+      console.error('MongoDB connection error:', err.message);
       console.warn('Falling back to in-memory session storage');
       bot.use(telegrafSession());
     });
 
 // Инициализация бота
-console.log('Initializing Telegraf bot with token:', process.env.BOT_TOKEN ? 'Token present.' : 'Token missing!');
-const bot = new Telegraf(process.env BOT_TOKEN);
+const bot = new Telegraf(process.env.BOT_TOKEN);
 bot.catch((err, ctx) => {
-  console.error('Telegraf global error for update', ctx.update, ':', err.stack);
+  console.error('Telegraf global error for update', ctx.update, ':', err.message);
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
 
@@ -78,7 +89,7 @@ app.post(`/bot${process.env.BOT_TOKEN}`, async (req, res) => {
     await bot.handleUpdate(req.body);
     res.status(200).send('OK');
   } catch (err) {
-    console.error('Error handling webhook update:', err.stack);
+    console.error('Error handling webhook update:', err.message);
     res.status(500).send('Error processing webhook');
   }
 });
@@ -184,7 +195,7 @@ async function sendInviteLink(user, ctx, paymentId) {
       );
     }
   } catch (error) {
-    console.error(`Error sending invite link for user ${user.userId}:`, error.stack);
+    console.error(`Error sending invite link for user ${user.userId}:`, error.message);
     await bot.telegram.sendMessage(
         user.chatId,
         'Ошибка при создании одноразовой ссылки на канал. Пожалуйста, свяжитесь с поддержкой.',
@@ -233,7 +244,7 @@ bot.command('checkpayment', async (ctx) => {
       });
     }
   } catch (error) {
-    console.error(`Error in /checkpayment for user ${userId}:`, error.stack);
+    console.error(`Error in /checkpayment for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при проверке статуса платежа. Попробуйте позже или свяжитесь с поддержкой.', {
       reply_markup: {
         inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]],
@@ -289,7 +300,7 @@ bot.start(async (ctx) => {
     await ctx.replyWithMarkdown(await getWelcomeMessage(), replyMarkup);
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
-    console.error(`Error in /start for user ${userId}:`, error.stack);
+    console.error(`Error in /start for user ${userId}:`, error.message);
     await ctx.reply('Произошла ошибка. Попробуй снова или свяжитесь с нами.');
   }
 });
@@ -319,7 +330,7 @@ bot.action('admin_panel', async (ctx) => {
       },
     });
   } catch (error) {
-    console.error(`Error in admin panel for user ${userId}:`, error.stack);
+    console.error(`Error in admin panel for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при открытии админ-панели.');
   }
 });
@@ -371,7 +382,7 @@ ${activeUsersList}
       },
     });
   } catch (error) {
-    console.error(`Error in stats for user ${userId}:`, error.stack);
+    console.error(`Error in stats for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
   }
 });
@@ -407,7 +418,7 @@ bot.action('export_subscribers', async (ctx) => {
       { header: 'Имя', key: 'firstName', width: 20 },
       { header: 'Username', key: 'username', width: 20 },
       { header: 'Телефон', key: 'phoneNumber', width: 15 },
-      { header: 'Email', key: 'email', width: 30 },
+      { header: 'Email', key: email, width: 30 },
       { header: 'Дата Платежа', key: 'paymentDate', width: 20 },
       { header: 'Документ Платежа', key: 'paymentDocument', width: 40 },
       { header: 'Последняя Активность', key: 'lastActivity', width: 20 },
@@ -468,8 +479,8 @@ bot.action('export_subscribers', async (ctx) => {
       filename: `subscribers_${new Date().toISOString().split('T')[0]}.xlsx`,
     });
   } catch (error) {
-    console.error(`Error in export_subscribers for user ${userId}:`, error.stack);
-    await ctx.reply('Ошибка при выгрузке подписчиков. Попробуйте позже.');
+    console.error(`Error in export_subscribers for user ${userId}:`, error.message);
+    await ctx.reply('Ошибка передачи подписчиков. Попробуйте позже.');
   }
 });
 
@@ -504,7 +515,7 @@ bot.action('back', async (ctx) => {
         reply_markup: replyMarkup.reply_markup,
       });
     } else if (lastAction === 'admin_panel') {
-      await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+      await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖️-👖️', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -514,11 +525,11 @@ bot.action('back', async (ctx) => {
             [{ text: '↩️ Назад', callback_data: 'back' }],
           ],
         },
-      });
+      })l
     }
   } catch (error) {
     console.error(`Error in back for user ${userId}:`, error.stack);
-    await ctx.reply('Произошла ошибка. Попробуйте позже.');
+    await ctx.reply('Произошла ошибка. Попробуйте снова.');
   }
 });
 
@@ -531,15 +542,15 @@ bot.action('edit', async (ctx) => {
   }
 
   try {
-    await User.updateOne({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId: userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
-    ctx.session.navHistory = ctx.session.navHistory || [];
+    ctx.services.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
     await ctx.editMessageText('Выберите, что редактировать:', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'О канале', callback_data: 'edit_channel' }],
+          [{ text: 'О канал', callback_data: 'edit_channel' }],
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
           [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
           [{ text: '↩️ Назад', callback_data: 'back' }],
@@ -575,12 +586,12 @@ bot.action('edit_channel', async (ctx) => {
 bot.action('edit_support', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
-  if (!adminIds.has(userId)) {
-    return ctx.reply('Доступ запрещён.');
-  }
+  if (!adminIds.has(userId')) {
+  return ctx.reply('Доступ запрещён.');
+}
 
-  try {
-    await User.updateOne({ userId }, { lastActivity: new Date() });
+try {
+  await User.updateOne({ userId': userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'supportLink';
     await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
@@ -626,8 +637,7 @@ bot.on('text', async (ctx) => {
       await User.updateOne({ userId }, { email: text });
       ctx.session.waitingForEmail = false;
       await ctx.reply('Email сохранён! Перехожу к созданию платежа...');
-      await processPayment(ctx, userId, String(ctx.chat.id));
-      return;
+      return await processPayment(ctx, userId, String(ctx.chat.id));
     }
 
     if (!adminIds.has(userId) || !ctx.session.editing) {
@@ -719,7 +729,7 @@ async function processPayment(ctx, userId, chatId) {
     });
   } catch (error) {
     console.error(`Payment error for user ${userId}:`, error.message);
-    await ctx.reply('Произошла ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
+    await ctx.reply('Ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
   }
 }
 
@@ -735,12 +745,12 @@ bot.action('buy', async (ctx) => {
     if (!user.email) {
       ctx.session = ctx.session || {};
       ctx.session.waitingForEmail = true;
-      await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты (например, user@example.com):');
+      await ctx.reply('Пожалуйста, введите ваш email для оформления оплаты:');
       return;
     }
     await processPayment(ctx, userId, chatId);
   } catch (error) {
-    console.error(`Error in buy for user ${userId}:`, error.stack);
+    console.error(`Error in buy for user ${userId}:`, error.message);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
@@ -805,24 +815,28 @@ app.get('/health', (req, res) => res.sendStatus(200));
 
 // Вебхук для ЮKassa
 app.post('/webhook/yookassa', async (req, res) => {
-  console.log('Received Yookassa webhook with body:', JSON.stringify(req.body));
-  const { event, object } = req.body;
-
-  if (event === 'payment.succeeded') {
-    const user = await User.findOne({ paymentId: object.id });
-    if (user && !user.joinedChannel) {
-      await sendInviteLink(user, { chat: { id: user.chatId } }, object.id);
-    } else if (!user) {
-      console.warn(`No user found for paymentId: ${object.id}`);
-      for (const adminId of adminIds) {
-        await bot.telegram.sendMessage(
-            adminId,
-            `Ошибка: Пользователь не найден для paymentId: ${object.id}`
-        );
+  try {
+    console.log('Received Yookassa webhook with body:', JSON.stringify(req.body));
+    const { event, object } = req.body;
+    if (event === 'payment.succeeded') {
+      const user = await User.findOne({ paymentId: object.id });
+      if (user && !user.joinedChannel) {
+        await sendInviteLink(user, { chat: { id: user.chatId } }, object.id);
+      } else if (!user) {
+        console.warn(`No user found for paymentId: ${object.id}`);
+        for (const adminId of adminIds) {
+          await bot.telegram.sendMessage(
+              adminId,
+              `Ошибка: Пользователь не найден для paymentId: ${object.id}`
+          );
+        }
       }
     }
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('Error in Yookassa webhook:', error.message);
+    res.sendStatus(500);
   }
-  res.sendStatus(200);
 });
 
 // Запуск сервера
