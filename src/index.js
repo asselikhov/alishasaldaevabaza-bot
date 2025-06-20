@@ -32,7 +32,6 @@ mongoose.connect(process.env.MONGODB_URI)
     .catch(err => {
       console.error('MongoDB connection error:', err.message);
       console.warn('Falling back to in-memory session storage');
-      bot.use(telegrafSession());
     });
 
 // Инициализация бота
@@ -42,7 +41,7 @@ bot.catch((err, ctx) => {
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
 
-// Используем in-memory сессии временно
+// Используем in-memory сессии
 bot.use(telegrafSession());
 
 // Схема пользователя
@@ -310,7 +309,7 @@ bot.action('admin_panel', async (ctx) => {
   }
 
   try {
-    await User.updateOne({ userId }, { lastActivity: new Date() });
+    await User.updateOne({ userId }, { lastActivity: New Date() });
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('start');
@@ -360,7 +359,7 @@ bot.action('stats', async (ctx) => {
 
     const statsMessage = `
 📊 Статистика:
-➖➖➖➖➖➖➖➖➖➖➖
+➖➖➖➖➖➖➖➖➶➖➖
 Пользователей: ${totalUsers} | Подписчиков: ${paidUsers}
 
 Посетители за последние 24 часа:
@@ -417,7 +416,7 @@ bot.action('export_subscribers', async (ctx) => {
       { header: 'Email', key: 'email', width: 30 },
       { header: 'Дата Платежа', key: 'paymentDate', width: 20 },
       { header: 'Документ Платежа', key: 'paymentDocument', width: 40 },
-      { header: 'Последняя Активность', key: 25 },
+      { header: 'Последняя Активность', key: 'lastActivity', width: 20 },
     ];
 
     worksheet.getRow(1).font = { bold: true, size: 12 };
@@ -446,18 +445,19 @@ bot.action('export_subscribers', async (ctx) => {
         paymentDocument: user.paymentDocument || 'N/A',
         lastActivity: user.lastActivity ? user.lastActivity.toLocaleString('ru-RU') : 'N/A',
       });
-    }));
+    });
 
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (rowNumber > 1)) {
+      if (rowNumber > 1) {
         row.font = { size: 11 };
         row.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-      };
-    }));
+        row.height = 25;
+      }
+    });
 
     ['L', 'N'].forEach(col => {
       worksheet.getColumn(col).numFmt = 'dd.mm.yyyy hh:mm:ss';
-    }));
+    });
 
     worksheet.columns.forEach(column => {
       let maxLength = 0;
@@ -466,12 +466,12 @@ bot.action('export_subscribers', async (ctx) => {
         maxLength = Math.max(maxLength, cellLength);
       });
       column.width = Math.min(maxLength + 2, 50);
-    }));
+    });
 
     const buffer = await workbook.xlsx.writeBuffer();
     await ctx.replyWithDocument({
       source: buffer,
-      filename: `subscribers_${new Date().toISOString().split('T')[0]0}.xlsx`,
+      filename: `subscribers_${new Date().toISOString().split('T')[0]}.xlsx`,
     });
   } catch (error) {
     console.error(`Error in export_subscribers for user ${userId}:`, error.message);
@@ -494,10 +494,10 @@ bot.action('back', async (ctx) => {
       const replyMarkup = {
         reply_markup: {
           inline_keyboard: [
-            [[
+            [
               { text: '🔥 Купить за 399р.', callback_data: 'buy' },
               { text: '💬 Техподдержка', url: settings.supportLink },
-            ]],
+            ],
             ...(adminIds.has(userId) ? [[
               { text: '👑 Админка', callback_data: 'admin_panel' },
               { text: '💡 О канале', callback_data: 'about' },
@@ -799,7 +799,7 @@ app.get('/return', async (req, res) => {
         }
       }
     } catch (error) {
-      console.error('Error processing /return:', error.message);
+      console.error('Error processing /return:', error.stack);
     }
   }
   res.send('Оплата обработана! Вы будете перенаправлены в Telegram.');
