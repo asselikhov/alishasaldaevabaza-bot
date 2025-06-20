@@ -54,6 +54,7 @@ const UserSchema = new mongoose.Schema({
   chatId: String,
   paymentStatus: { type: String, default: 'pending' },
   paymentId: String,
+  localPaymentId: String, // Новое поле для локального ID
   joinedChannel: { type: Boolean, default: false },
   inviteLink: String,
   inviteLinkExpires: Number,
@@ -256,7 +257,7 @@ bot.command('checkpayment', async (ctx) => {
 
     const payment = await getPayment(user.paymentId);
     if (payment.status === 'succeeded') {
-      await sendInviteLink(user, ctx, payment.id);
+      await sendInviteLink(user, ctx, user.paymentId);
     } else {
       await ctx.reply(`Статус вашего платежа: ${payment.status}. Пожалуйста, завершите оплату или свяжитесь с поддержкой.`, {
         reply_markup: {
@@ -433,6 +434,7 @@ bot.action('export_subscribers', async (ctx) => {
       { header: 'ID Чата', key: 'chatId', width: 20 },
       { header: 'Статус Платежа', key: 'paymentStatus', width: 15 },
       { header: 'ID Платежа', key: 'paymentId', width: 30 },
+      { header: 'Локальный ID Платежа', key: 'localPaymentId', width: 30 }, // Новое поле
       { header: 'Вступил в Канал', key: 'joinedChannel', width: 15 },
       { header: 'Ссылка Приглашения', key: 'inviteLink', width: 40 },
       { header: 'Срок Ссылки', key: 'inviteLinkExpires', width: 15 },
@@ -460,6 +462,7 @@ bot.action('export_subscribers', async (ctx) => {
         chatId: user.chatId || 'N/A',
         paymentStatus: user.paymentStatus || 'N/A',
         paymentId: user.paymentId || 'N/A',
+        localPaymentId: user.localPaymentId || 'N/A',
         joinedChannel: user.joinedChannel ? 'Да' : 'Нет',
         inviteLink: user.inviteLink || 'N/A',
         inviteLinkExpires: user.inviteLinkExpires ? new Date(user.inviteLinkExpires).toLocaleString('ru-RU') : 'Без срока',
@@ -481,7 +484,7 @@ bot.action('export_subscribers', async (ctx) => {
       }
     });
 
-    ['L', 'N'].forEach(col => {
+    ['M', 'O'].forEach(col => { // Обновлены индексы колонок из-за добавления localPaymentId
       worksheet.getColumn(col).numFmt = 'dd.mm.yyyy hh:mm:ss';
     });
 
@@ -722,15 +725,15 @@ async function processPayment(ctx, userId, chatId) {
       });
     }
 
-    const paymentId = uuidv4();
-    console.log(`Creating payment for user ${userId}, paymentId: ${paymentId}`);
+    const localPaymentId = uuidv4();
+    console.log(`Creating payment for user ${userId}, localPaymentId: ${localPaymentId}`);
     const payment = await Promise.race([
       createPayment({
         amount: 399,
         description: 'Доступ к закрытому Telegram каналу',
-        paymentId,
+        paymentId: localPaymentId,
         userId,
-        returnUrl: process.env.RETURN_URL,
+        returnUrl: `${process.env.RETURN_URL}?paymentId=${localPaymentId}`,
         email: user.email,
       }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout waiting for Yookassa response')), 15000))
@@ -738,7 +741,7 @@ async function processPayment(ctx, userId, chatId) {
 
     await User.updateOne(
         { userId },
-        { paymentId, paymentStatus: 'pending', chatId, lastActivity: new Date() },
+        { paymentId: payment.id, localPaymentId, paymentStatus: 'pending', chatId, lastActivity: new Date() },
         { upsert: true }
     );
 
@@ -750,7 +753,11 @@ async function processPayment(ctx, userId, chatId) {
     });
   } catch (error) {
     console.error(`Payment error for user ${userId}:`, error.message);
-    await ctx.reply('Ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.');
+    await ctx.reply('Ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.', {
+      reply_markup: {
+        inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]],
+      },
+    });
   }
 }
 
@@ -812,17 +819,19 @@ app.get('/', (req, res) => {
 // Обработка возврата от ЮKassa
 app.get('/return', async (req, res) => {
   console.log('Received /return request with query:', req.query);
-  const { paymentId } = req.query;
-  if (paymentId) {
+  const { paymentId: localPaymentId } = req.query; // Используем localPaymentId
+  if (localPaymentId) {
     try {
-      const user = await User.findOne({ paymentId });
+      const user = await User.findOne({ localPaymentId });
       if (user) {
-        const payment = await getPayment(paymentId);
+        const payment = await getPayment(user.paymentId);
         if (payment.status === 'succeeded') {
-          await sendInviteLink(user, { chat: { id: user.chatId } }, paymentId);
+          await sendInviteLink(user, { chat: { id: user.chatId } }, user.paymentId);
         } else {
           await bot.telegram.sendMessage(user.chatId, `Оплата ещё не подтверждена. Статус: ${payment.status}. Попробуйте /checkpayment позже.`);
         }
+      } else {
+        console.warn(`No user found for localPaymentId: ${localPaymentId}`);
       }
     } catch (error) {
       console.error('Error processing /return:', error.stack);
