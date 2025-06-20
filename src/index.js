@@ -165,7 +165,7 @@ async function sendInviteLink(user, ctx, paymentId) {
       );
       await bot.telegram.sendMessage(
           user.chatId,
-          'Ваша уникальная ссылка для вступления в закрытый канал:',
+          'Ваша уникальная одноразовая ссылка для вступления в закрытый канал:',
           {
             parse_mode: 'Markdown',
             reply_markup: {
@@ -179,12 +179,12 @@ async function sendInviteLink(user, ctx, paymentId) {
     const chatInvite = await bot.telegram.createChatInviteLink(
         process.env.CHANNEL_ID,
         {
-          name: `Invite for user_${user.userId}`,
-          member_limit: 1,
+          name: `Invite for user_${user.userId}_${uuidv4()}`, // Уникальное имя для ссылки
+          member_limit: 1, // Ограничение на одного пользователя
           creates_join_request: false,
         }
     );
-    console.log(`[INVITE] Created invite link: ${chatInvite.invite_link} for user ${user.userId}`);
+    console.log(`[INVITE] Created unique invite link: ${chatInvite.invite_link} for user ${user.userId}`);
 
     const paymentData = await getPayment(paymentId);
     if (paymentData.status !== 'succeeded') {
@@ -242,7 +242,7 @@ async function sendInviteLink(user, ctx, paymentId) {
     );
     await bot.telegram.sendMessage(
         user.chatId,
-        'Ваша уникальная ссылка для вступления в закрытый канал:',
+        'Ваша уникальная одноразовая ссылка для вступления в закрытый канал:',
         {
           parse_mode: 'Markdown',
           reply_markup: {
@@ -297,7 +297,7 @@ bot.command('checkpayment', async (ctx) => {
           ],
         },
       });
-      await ctx.reply('Ваша уникальная ссылка для вступления в закрытый канал:', {
+      await ctx.reply('Ваша уникальная одноразовая ссылка для вступления в закрытый канал:', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
