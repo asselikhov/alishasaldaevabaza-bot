@@ -449,7 +449,7 @@ bot.action('export_subscribers', async (ctx) => {
       { header: 'ID Чата', key: 'chatId', width: 20 },
       { header: 'Статус Платежа', key: 'paymentStatus', width: 15 },
       { header: 'ID Платежа', key: 'paymentId', width: 30 },
-      { header: 'Локальный ID Платежа', key: 'localPaymentId', width: 30 }, // Новое поле
+      { header: 'Локальный ID Платежа', key: 'localPaymentId', width: 30 },
       { header: 'Вступил в Канал', key: 'joinedChannel', width: 15 },
       { header: 'Ссылка Приглашения', key: 'inviteLink', width: 40 },
       { header: 'Срок Ссылки', key: 'inviteLinkExpires', width: 15 },
@@ -499,7 +499,7 @@ bot.action('export_subscribers', async (ctx) => {
       }
     });
 
-    ['M', 'O'].forEach(col => { // Обновлены индексы колонок из-за добавления localPaymentId
+    ['M', 'O'].forEach(col => {
       worksheet.getColumn(col).numFmt = 'dd.mm.yyyy hh:mm:ss';
     });
 
@@ -592,7 +592,7 @@ bot.action('edit', async (ctx) => {
           [{ text: 'О канал', callback_data: 'edit_channel' }],
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
           [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
-          [{ text: 'Сумма оплаты', callback_data: 'edit_payment_amount' }], // Новая кнопка
+          [{ text: 'Сумма оплаты', callback_data: 'edit_payment_amount' }],
           [{ text: '↩️ Назад', callback_data: 'back' }],
         ],
       },
@@ -867,7 +867,7 @@ app.get('/', (req, res) => {
 // Обработка возврата от ЮKassa
 app.get('/return', async (req, res) => {
   console.log('Received /return request with query:', req.query);
-  const { paymentId: localPaymentId } = req.query; // Используем localPaymentId
+  const { paymentId: localPaymentId } = req.query;
   if (localPaymentId) {
     try {
       const user = await User.findOne({ localPaymentId });
