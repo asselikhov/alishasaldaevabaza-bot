@@ -444,7 +444,7 @@ bot.action('stats', async (ctx) => {
 
     const statsMessage = `
 📊 Статистика:
-➖➖➖➖➖➖➖➖➶➖➖
+➖➖➖➖➖➖➖➖➖➖➖➖➖
 Пользователей: ${totalUsers} | Подписчиков: ${paidUsers}
 
 Посетители за последние 24 часа:
@@ -645,7 +645,7 @@ bot.action('edit', async (ctx) => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'О канал', callback_data: 'edit_channel' }],
+          [{ text: 'О канале', callback_data: 'edit_channel' }],
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
           [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
           [{ text: 'Сумма оплаты', callback_data: 'edit_payment_amount' }],
