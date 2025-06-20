@@ -75,6 +75,7 @@ const SettingsSchema = new mongoose.Schema({
   supportLink: { type: String, default: 'https://t.me/Eagleshot' },
   welcomeMessage: { type: String, default: 'ЙОУ ЧИКСЫ 😎\n\nЯ рада видеть вас здесь, лютые модницы 💅\n\nДержите меня семеро, потому что я вас научу пипэц как выгодно брать шмотьё🤭🤫\n\nЖду вас в своём клубе шаболятниц 🤝❤️' },
   paymentAmount: { type: Number, default: 399 }, // Добавлено поле для суммы оплаты
+  paidWelcomeMessage: { type: String, default: '🎉 Добро пожаловать в закрытый клуб модниц! 🎉\n\nВы успешно оплатили доступ к эксклюзивному контенту. Наслаждайтесь шопингом и стильными находками! 💃\n\nЕсли есть вопросы, я всегда рядом!' }, // Новое поле для приветствия после оплаты
 });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
@@ -139,6 +140,12 @@ async function getSettings() {
 async function getWelcomeMessage() {
   const settings = await getSettings();
   return settings.welcomeMessage;
+}
+
+// Текст приветственного сообщения для оплаченных пользователей
+async function getPaidWelcomeMessage() {
+  const settings = await getSettings();
+  return settings.paidWelcomeMessage;
 }
 
 // Функция для создания и отправки одноразовой ссылки
@@ -215,18 +222,32 @@ async function sendInviteLink(user, ctx, paymentId) {
     );
     console.log(`[INVITE] User ${user.userId} updated with invite link and payment details`);
 
-    // Отправка ссылки пользователю
+    // Удаление всех предыдущих сообщений пользователя
+    const chatHistory = await bot.telegram.getChatHistory(user.chatId, { limit: 100 });
+    for (const message of chatHistory) {
+      try {
+        await bot.telegram.deleteMessage(user.chatId, message.message_id);
+      } catch (deleteError) {
+        console.warn(`[INVITE] Failed to delete message ${message.message_id} for user ${user.userId}:`, deleteError.message);
+      }
+    }
+
+    // Отправка нового приветственного сообщения для оплаченных пользователей
+    const settings = await getSettings();
     await bot.telegram.sendMessage(
         user.chatId,
-        'Оплата прошла успешно! 🎉 Вот ваша одноразовая ссылка для вступления в закрытый канал:',
+        await getPaidWelcomeMessage(),
         {
           parse_mode: 'Markdown',
           reply_markup: {
-            inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
+            inline_keyboard: [
+              [{ text: '💬 Техподдержка', url: settings.supportLink }],
+              [{ text: '💡 О канале', callback_data: 'about' }],
+            ],
           },
         }
     );
-    console.log(`[INVITE] Invite link sent to user ${user.userId}`);
+    console.log(`[INVITE] New welcome message sent to user ${user.userId}`);
 
     // Уведомление администраторов
     for (const adminId of adminIds) {
@@ -339,7 +360,23 @@ bot.start(async (ctx) => {
         ],
       },
     };
-    await ctx.replyWithMarkdown(await getWelcomeMessage(), replyMarkup);
+    if (user.paymentStatus === 'succeeded' && user.inviteLink) {
+      await bot.telegram.sendMessage(
+          chatId,
+          await getPaidWelcomeMessage(),
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '💬 Техподдержка', url: settings.supportLink }],
+                [{ text: '💡 О канале', callback_data: 'about' }],
+              ],
+            },
+          }
+      );
+    } else {
+      await ctx.replyWithMarkdown(await getWelcomeMessage(), replyMarkup);
+    }
     console.log(`Reply sent to ${userId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.message);
@@ -540,6 +577,7 @@ bot.action('back', async (ctx) => {
 
     if (lastAction === 'start') {
       const settings = await getSettings();
+      const user = await User.findOne({ userId });
       const replyMarkup = {
         reply_markup: {
           inline_keyboard: [
@@ -554,10 +592,22 @@ bot.action('back', async (ctx) => {
           ],
         },
       };
-      await ctx.editMessageText(await getWelcomeMessage(), {
-        parse_mode: 'Markdown',
-        reply_markup: replyMarkup.reply_markup,
-      });
+      if (user.paymentStatus === 'succeeded' && user.inviteLink) {
+        await ctx.editMessageText(await getPaidWelcomeMessage(), {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '💬 Техподдержка', url: settings.supportLink }],
+              [{ text: '💡 О канале', callback_data: 'about' }],
+            ],
+          },
+        });
+      } else {
+        await ctx.editMessageText(await getWelcomeMessage(), {
+          parse_mode: 'Markdown',
+          reply_markup: replyMarkup.reply_markup,
+        });
+      }
     } else if (lastAction === 'admin_panel') {
       await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
         parse_mode: 'Markdown',
@@ -598,6 +648,7 @@ bot.action('edit', async (ctx) => {
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
           [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
           [{ text: 'Сумма оплаты', callback_data: 'edit_payment_amount' }],
+          [{ text: 'Приветствие после оплаты', callback_data: 'edit_paid_welcome' }],
           [{ text: '↩️ Назад', callback_data: 'back' }],
         ],
       },
@@ -684,6 +735,25 @@ bot.action('edit_payment_amount', async (ctx) => {
   }
 });
 
+// Обработчик кнопки "Приветствие после оплаты" (редактирование)
+bot.action('edit_paid_welcome', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+  if (!adminIds.has(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
+  try {
+    await User.updateOne({ userId }, { lastActivity: new Date() });
+    ctx.session = ctx.session || {};
+    ctx.session.editing = 'paidWelcomeMessage';
+    await ctx.reply('Введите новое приветственное сообщение для пользователей после оплаты:');
+  } catch (error) {
+    console.error(`Error in edit_paid_welcome for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при запросе приветственного сообщения после оплаты.');
+  }
+});
+
 // Обработчик текстового ввода для редактирования и email
 bot.on('text', async (ctx) => {
   const userId = String(ctx.from.id);
@@ -756,6 +826,17 @@ bot.on('text', async (ctx) => {
       );
       ctx.session.editing = null;
       await ctx.reply(`Сумма оплаты обновлена на ${amount} руб.!`);
+    } else if (ctx.session.editing === 'paidWelcomeMessage') {
+      if (text.length < 10) {
+        return ctx.reply('Приветственное сообщение после оплаты должно быть не короче 10 символов. Попробуйте снова:');
+      }
+      cachedSettings = await Settings.findOneAndUpdate(
+          {},
+          { paidWelcomeMessage: text },
+          { upsert: true, new: true }
+      );
+      ctx.session.editing = null;
+      await ctx.reply('Приветственное сообщение после оплаты обновлено!');
     }
   } catch (error) {
     console.error(`Error processing text input for user ${userId}:`, error.stack);
