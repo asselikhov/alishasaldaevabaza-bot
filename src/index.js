@@ -85,6 +85,7 @@ console.log('Parsed adminIds:', [...adminIds]);
 
 // Функция валидации вебхука YooKassa
 function validateYookassaWebhook(req) {
+  console.log('[WEBHOOK] Raw body:', req.body.toString('utf8')); // Добавленное логирование
   const signatureHeader = req.headers['signature'];
   if (!signatureHeader) {
     console.error('[WEBHOOK] YooKassa webhook validation failed: Missing signature header');
@@ -104,7 +105,7 @@ function validateYookassaWebhook(req) {
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
   const hmac = crypto.createHmac('sha256', secretKey);
 
-  // Формируем данные для подписи: timestamp + '.' + тело запроса (в виде буфера)
+  // Используем UTF-8 для преобразования тела запроса
   const data = `${timestamp}.${req.body.toString('utf8')}`;
   hmac.update(data);
   const computedSignature = hmac.digest('base64');
