@@ -258,23 +258,80 @@ bot.action('export_subscribers', async (ctx) => {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Subscribers');
+    const worksheet = workbook.addWorksheet('Subscribers', {
+      properties: { defaultRowHeight: 20 },
+    });
+
+    // Определяем столбцы
     worksheet.columns = [
-      { header: 'User ID', key: 'userId', width: 20 },
+      { header: 'ID Пользователя', key: 'userId', width: 20 },
+      { header: 'ID Чата', key: 'chatId', width: 20 },
+      { header: 'Статус Платежа', key: 'paymentStatus', width: 15 },
+      { header: 'ID Платежа', key: 'paymentId', width: 30 },
+      { header: 'Вступил в Канал', key: 'joinedChannel', width: 15 },
+      { header: 'Ссылка Приглашения', key: 'inviteLink', width: 40 },
+      { header: 'Срок Ссылки', key: 'inviteLinkExpires', width: 15 },
       { header: 'Имя', key: 'firstName', width: 20 },
       { header: 'Username', key: 'username', width: 20 },
+      { header: 'Телефон', key: 'phoneNumber', width: 15 },
       { header: 'Email', key: 'email', width: 30 },
-      { header: 'Дата оплаты', key: 'paymentDate', width: 20 },
+      { header: 'Дата Платежа', key: 'paymentDate', width: 20 },
+      { header: 'Документ Платежа', key: 'paymentDocument', width: 40 },
+      { header: 'Последняя Активность', key: 'lastActivity', width: 20 },
     ];
 
+    // Стили для заголовков
+    worksheet.getRow(1).font = { bold: true, size: 12 };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFADD8E6' }, // Светло-голубой фон
+    };
+    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    worksheet.getRow(1).height = 30;
+
+    // Добавляем данные
     users.forEach(user => {
       worksheet.addRow({
-        userId: user.userId,
+        userId: user.userId || 'N/A',
+        chatId: user.chatId || 'N/A',
+        paymentStatus: user.paymentStatus || 'N/A',
+        paymentId: user.paymentId || 'N/A',
+        joinedChannel: user.joinedChannel ? 'Да' : 'Нет',
+        inviteLink: user.inviteLink || 'N/A',
+        inviteLinkExpires: user.inviteLinkExpires ? new Date(user.inviteLinkExpires).toLocaleString('ru-RU') : 'Без срока',
         firstName: user.firstName || 'N/A',
-        username: user.username || 'N/A',
+        username: user.username ? `@${user.username}` : 'N/A',
+        phoneNumber: user.phoneNumber || 'N/A',
         email: user.email || 'N/A',
         paymentDate: user.paymentDate ? user.paymentDate.toLocaleString('ru-RU') : 'N/A',
+        paymentDocument: user.paymentDocument || 'N/A',
+        lastActivity: user.lastActivity ? user.lastActivity.toLocaleString('ru-RU') : 'N/A',
       });
+    });
+
+    // Стили для данных
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber > 1) {
+        row.font = { size: 11 };
+        row.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        row.height = 25;
+      }
+    });
+
+    // Форматирование столбцов с датами
+    ['L', 'N'].forEach(col => {
+      worksheet.getColumn(col).numFmt = 'dd.mm.yyyy hh:mm:ss';
+    });
+
+    // Автоподгонка ширины столбцов
+    worksheet.columns.forEach(column => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, cell => {
+        const cellLength = cell.value ? String(cell.value).length : 10;
+        maxLength = Math.max(maxLength, cellLength);
+      });
+      column.width = Math.min(maxLength + 2, 50); // Ограничение максимальной ширины
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -571,14 +628,14 @@ bot.action('about', async (ctx) => {
       await ctx.editMessageText(settings.channelDescription, {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
+          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }] ],
         },
       });
     } catch (editError) {
       console.warn(`Failed to edit message for user ${userId}:`, editError.message);
       await ctx.replyWithMarkdown(settings.channelDescription, {
         reply_markup: {
-          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]],
+          inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }] ],
         },
       });
     }
@@ -626,7 +683,7 @@ app.post('/webhook/yookassa', async (req, res) => {
               {
                 parse_mode: 'Markdown',
                 reply_markup: {
-                  inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+                  inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }] ],
                 },
               }
           );
@@ -679,7 +736,7 @@ app.post('/webhook/yookassa', async (req, res) => {
             {
               parse_mode: 'Markdown',
               reply_markup: {
-                inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
+                inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }] ],
               },
             }
         );
@@ -697,7 +754,7 @@ app.post('/webhook/yookassa', async (req, res) => {
             'Ошибка при создании одноразовой ссылки на канал. Пожалуйста, свяжитесь с поддержкой.',
             {
               reply_markup: {
-                inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]],
+                inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }] ],
               },
             }
         );
