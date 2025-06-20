@@ -74,6 +74,7 @@ const SettingsSchema = new mongoose.Schema({
   channelDescription: { type: String, default: 'Добро пожаловать в наш магазин! Мы предлагаем стильную одежду по доступным ценам с быстрой доставкой. Подписывайтесь на канал для эксклюзивных предложений! 😊' },
   supportLink: { type: String, default: 'https://t.me/Eagleshot' },
   welcomeMessage: { type: String, default: 'ЙОУ ЧИКСЫ 😎\n\nЯ рада видеть вас здесь, лютые модницы 💅\n\nДержите меня семеро, потому что я вас научу пипэц как выгодно брать шмотьё🤭🤫\n\nЖду вас в своём клубе шаболятниц 🤝❤️' },
+  paymentAmount: { type: Number, default: 399 }, // Добавлено поле для суммы оплаты
 });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
@@ -168,12 +169,22 @@ async function sendInviteLink(user, ctx, paymentId) {
         }
     );
 
+    // Получение данных платежа из YooKassa
+    const paymentData = await getPayment(paymentId);
+    if (paymentData.status !== 'succeeded') {
+      throw new Error(`Payment ${paymentId} status is ${paymentData.status}, expected succeeded`);
+    }
+
+    // Генерация текста чека на основе данных из YooKassa
     const paymentText = `Платежный документ\n` +
         `ID транзакции: ${paymentId}\n` +
-        `Сумма: 399.00 RUB\n` +
-        `Дата: ${new Date().toLocaleString('ru-RU')}\n` +
-        `Статус: succeeded\n` +
-        `Пользователь: ${user.userId}`;
+        `Сумма: ${paymentData.amount.value} ${paymentData.amount.currency}\n` +
+        `Дата: ${new Date(paymentData.created_at).toLocaleString('ru-RU')}\n` +
+        `Статус: ${paymentData.status}\n` +
+        `Пользователь: ${user.userId}\n` +
+        `Email: ${paymentData.receipt?.customer?.email || user.email || 'N/A'}`;
+
+    // Отправка чека в группу
     const paymentDoc = await bot.telegram.sendDocument(
         process.env.PAYMENT_GROUP_ID,
         {
@@ -184,8 +195,10 @@ async function sendInviteLink(user, ctx, paymentId) {
           caption: `Документ оплаты для user_${user.userId}`,
         }
     );
+
     const paymentDocument = `https://t.me/c/${process.env.PAYMENT_GROUP_ID.replace('-100', '')}/${paymentDoc.message_id}`;
 
+    // Обновление данных пользователя
     await User.updateOne(
         { userId: user.userId, paymentId },
         {
@@ -193,12 +206,13 @@ async function sendInviteLink(user, ctx, paymentId) {
           joinedChannel: true,
           inviteLink: chatInvite.invite_link,
           inviteLinkExpires: null,
-          paymentDate: new Date(),
+          paymentDate: new Date(paymentData.created_at),
           paymentDocument,
           lastActivity: new Date(),
         }
     );
 
+    // Отправка ссылки пользователю
     await bot.telegram.sendMessage(
         user.chatId,
         'Оплата прошла успешно! 🎉 Вот ваша одноразовая ссылка для вступления в закрытый канал:',
@@ -210,6 +224,7 @@ async function sendInviteLink(user, ctx, paymentId) {
         }
     );
 
+    // Уведомление администраторов
     for (const adminId of adminIds) {
       await bot.telegram.sendMessage(
           adminId,
@@ -309,7 +324,7 @@ bot.start(async (ctx) => {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '🔥 Купить за 399р.', callback_data: 'buy' },
+            { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
             { text: '💬 Техподдержка', url: settings.supportLink },
           ],
           ...(adminIds.has(userId) ? [[
@@ -524,7 +539,7 @@ bot.action('back', async (ctx) => {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🔥 Купить за 399р.', callback_data: 'buy' },
+              { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
               { text: '💬 Техподдержка', url: settings.supportLink },
             ],
             ...(adminIds.has(userId) ? [[
@@ -577,6 +592,7 @@ bot.action('edit', async (ctx) => {
           [{ text: 'О канал', callback_data: 'edit_channel' }],
           [{ text: 'Техподдержка', callback_data: 'edit_support' }],
           [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
+          [{ text: 'Сумма оплаты', callback_data: 'edit_payment_amount' }], // Новая кнопка
           [{ text: '↩️ Назад', callback_data: 'back' }],
         ],
       },
@@ -644,6 +660,25 @@ bot.action('edit_welcome', async (ctx) => {
   }
 });
 
+// Обработчик кнопки "Сумма оплаты" (редактирование)
+bot.action('edit_payment_amount', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+  if (!adminIds.has(userId)) {
+    return ctx.reply('Доступ запрещён.');
+  }
+
+  try {
+    await User.updateOne({ userId }, { lastActivity: new Date() });
+    ctx.session = ctx.session || {};
+    ctx.session.editing = 'paymentAmount';
+    await ctx.reply('Введите новую сумму оплаты в рублях (например, 499):');
+  } catch (error) {
+    console.error(`Error in edit_payment_amount for user ${userId}:`, error.stack);
+    await ctx.reply('Ошибка при запросе суммы оплаты.');
+  }
+});
+
 // Обработчик текстового ввода для редактирования и email
 bot.on('text', async (ctx) => {
   const userId = String(ctx.from.id);
@@ -704,6 +739,18 @@ bot.on('text', async (ctx) => {
       );
       ctx.session.editing = null;
       await ctx.reply('Приветственное сообщение обновлено!');
+    } else if (ctx.session.editing === 'paymentAmount') {
+      const amount = parseFloat(text);
+      if (isNaN(amount) || amount <= 0) {
+        return ctx.reply('Пожалуйста, введите корректную сумму больше 0 (например, 499):');
+      }
+      cachedSettings = await Settings.findOneAndUpdate(
+          {},
+          { paymentAmount: amount },
+          { upsert: true, new: true }
+      );
+      ctx.session.editing = null;
+      await ctx.reply(`Сумма оплаты обновлена на ${amount} руб.!`);
     }
   } catch (error) {
     console.error(`Error processing text input for user ${userId}:`, error.stack);
@@ -725,11 +772,12 @@ async function processPayment(ctx, userId, chatId) {
       });
     }
 
+    const settings = await getSettings();
     const localPaymentId = uuidv4();
     console.log(`Creating payment for user ${userId}, localPaymentId: ${localPaymentId}`);
     const payment = await Promise.race([
       createPayment({
-        amount: 399,
+        amount: settings.paymentAmount,
         description: 'Доступ к закрытому Telegram каналу',
         paymentId: localPaymentId,
         userId,
