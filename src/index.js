@@ -309,7 +309,7 @@ bot.action('admin_panel', async (ctx) => {
   }
 
   try {
-    await User.updateOne({ userId }, { lastActivity: New Date() });
+    await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('start');
