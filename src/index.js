@@ -3,15 +3,19 @@ const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
+
+// Middleware для получения raw body для вебхука YooKassa
+app.use('/webhook/yookassa', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 // Логирование всех запросов
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] Received ${req.method} request at ${req.path}`);
-  console.log('Request body:', JSON.stringify(req.body));
+  console.log('Request body:', req.body ? JSON.stringify(req.body) : 'No body');
   next();
 });
 
@@ -76,6 +80,28 @@ const Settings = mongoose.model('Settings', SettingsSchema);
 // Определение администраторов
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 console.log('Parsed adminIds:', [...adminIds]);
+
+// Функция валидации вебхука YooKassa
+function validateYookassaWebhook(req) {
+  const signature = req.headers['x-hmac-signature'];
+  if (!signature) {
+    console.error('YooKassa webhook validation failed: Missing X-Hmac-Signature header');
+    return false;
+  }
+
+  const secretKey = process.env.YOOKASSA_SECRET_KEY;
+  const hmac = crypto.createHmac('sha256', secretKey);
+  hmac.update(req.body);
+  const computedSignature = hmac.digest('base64');
+
+  if (computedSignature !== signature) {
+    console.error(`YooKassa webhook validation failed: Signature mismatch. Expected: ${computedSignature}, Received: ${signature}`);
+    return false;
+  }
+
+  console.log('YooKassa webhook signature validated successfully');
+  return true;
+}
 
 // Явная настройка вебхука
 app.post(`/bot${process.env.BOT_TOKEN}`, async (req, res) => {
@@ -811,8 +837,23 @@ app.get('/health', (req, res) => res.sendStatus(200));
 // Вебхук для ЮKassa
 app.post('/webhook/yookassa', async (req, res) => {
   try {
-    console.log('Received Yookassa webhook with body:', JSON.stringify(req.body));
-    const { event, object } = req.body;
+    // Валидация подписи вебхука
+    if (!validateYookassaWebhook(req)) {
+      console.error('Invalid YooKassa webhook signature');
+      for (const adminId of adminIds) {
+        await bot.telegram.sendMessage(
+            adminId,
+            `Ошибка: Неверная подпись вебхука YooKassa. Запрос отклонён.`
+        );
+      }
+      return res.status(400).send('Invalid webhook signature');
+    }
+
+    // Парсим тело запроса после валидации
+    const body = JSON.parse(req.body.toString());
+    console.log('Received Yookassa webhook with body:', JSON.stringify(body));
+
+    const { event, object } = body;
     if (event === 'payment.succeeded') {
       console.log(`Processing payment.succeeded for paymentId: ${object.id}`);
       const user = await User.findOne({ paymentId: object.id });
