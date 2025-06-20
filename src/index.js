@@ -1,10 +1,8 @@
 const { Telegraf, session: telegrafSession } = require('telegraf');
 const mongoose = require('mongoose');
-const { MongoClient } = require('mongodb');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const ExcelJS = require('exceljs');
-const { session } = require('telegraf-session-mongodb');
 require('dotenv').config();
 
 const app = express();
@@ -17,50 +15,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// Подключение к MongoDB и настройка сессий
-let db;
+// Настройка Mongoose
+mongoose.set('strictQuery', true); // Подавление предупреждения о strictQuery
 mongoose.connect(process.env.MONGODB_URI)
-    .then(async () => {
+    .then(() => {
       console.log('Connected to MongoDB via Mongoose');
-      try {
-        console.log('Initializing MongoDB session storage...');
-        const client = new MongoClient(process.env.MONGODB_URI, {
-          useNewUrlParser: true,
-          useUnifiedTopology: true,
-        });
-        await client.connect();
-        console.log('Connected to MongoDB via MongoClient');
-        db = client.db(process.env.MONGODB_DBNAME || 'test');
-        console.log('MongoDB database name:', db.databaseName);
-
-        console.log('Checking if db.collection exists:', typeof db.collection === 'function');
-        if (typeof db.collection !== 'function') {
-          throw new Error('db.collection is not a function');
-        }
-
-        bot.use(session({
-          collectionName: 'sessions',
-          database: db,
-        }));
-        console.log('MongoDB session storage initialized');
-
-        await db.createCollection('sessions').catch(err => {
-          console.log('Collection "sessions" already exists or creation not needed:', err.message);
-        });
-
-        await db.collection('sessions').createIndex(
-            { "expireAt": 1 },
-            { expireAfterSeconds: 7 * 24 * 60 * 60 }
-        );
-        console.log('TTL index created for sessions collection');
-
-        const sessionCount = await db.collection('sessions').countDocuments();
-        console.log(`Sessions collection contains ${sessionCount} documents`);
-      } catch (err) {
-        console.error('Failed to initialize MongoDB session storage:', err.stack);
-        console.warn('Falling back to in-memory session storage');
-        bot.use(telegrafSession());
-      }
     })
     .catch(err => {
       console.error('MongoDB connection error:', err.stack);
@@ -76,11 +35,8 @@ bot.catch((err, ctx) => {
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
 
-// Отладка сессий
-bot.use((ctx, next) => {
-  console.log(`[${new Date().toISOString()}] Session data for user ${ctx.from?.id}:`, JSON.stringify(ctx.session));
-  return next();
-});
+// Используем in-memory сессии временно
+bot.use(telegrafSession()); // TODO: Вернуться к MongoDB-сессиям после обновления зависимостей
 
 // Схема пользователя
 const UserSchema = new mongoose.Schema({
@@ -247,25 +203,27 @@ bot.action('stats', async (ctx) => {
 
     const totalUsers = await User.countDocuments();
     const paidUsers = await User.countDocuments({ paymentStatus: 'succeeded' });
-    const pendingUsers = await User.countDocuments({ paymentStatus: 'pending' });
-    const activeUsersLast24h = await User.countDocuments({
+    const activeUsersLast24h = await User.find({
       lastActivity: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-    });
-    const totalRevenue = await User.aggregate([
-      { $match: { paymentStatus: 'succeeded' } },
-      { $group: { _id: null, total: { $sum: 399 } } },
-    ]);
+    }).select('firstName username userId');
 
-    const revenue = totalRevenue[0]?.total || 0;
+    let activeUsersList = 'Нет активных пользователей за последние 24 часа.';
+    if (activeUsersLast24h.length > 0) {
+      activeUsersList = activeUsersLast24h
+          .map((user, index) => {
+            const username = user.username ? `@${user.username}` : '';
+            return `${index + 1}. ${user.firstName} (${username}, ID: ${user.userId})`.trim();
+          })
+          .join('\n');
+    }
 
     const statsMessage = `
 📊 Статистика:
 ➖➖➖➖➖➖➖➖➖➖➖
-👥 Всего пользователей: ${totalUsers}
-💸 Оплачено: ${paidUsers}
-⏳ Ожидают оплаты: ${pendingUsers}
-🕒 Активны за последние 24 часа: ${activeUsersLast24h}
-💰 Общая выручка: ${revenue} руб.
+Пользователей: ${totalUsers} | Подписчиков: ${paidUsers}
+
+Посетители за последние 24 часа:
+${activeUsersList}
     `;
 
     ctx.session = ctx.session || {};
