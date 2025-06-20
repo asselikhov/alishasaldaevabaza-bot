@@ -148,7 +148,7 @@ async function getPaidWelcomeMessage() {
   return settings.paidWelcomeMessage;
 }
 
-// Функция для создания и отправки одноразовой ссылки
+// Функция для создания и отправки постоянной ссылки
 async function sendInviteLink(user, ctx, paymentId) {
   try {
     console.log(`[INVITE] Processing invite link for user ${user.userId}, paymentId: ${paymentId}`);
@@ -156,11 +156,14 @@ async function sendInviteLink(user, ctx, paymentId) {
       console.log(`[INVITE] User ${user.userId} already has a valid invite link: ${user.inviteLink}`);
       await bot.telegram.sendMessage(
           user.chatId,
-          'Оплата прошла успешно! 🎉 Ваша персональная ссылка для вступления в закрытый канал уже отправлена ранее:',
+          'Оплата прошла успешно! 🎉 Ваша персональная ссылка для вступления в закрытый канал уже отправлена ранее:' + '\n\n' + await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')',
           {
             parse_mode: 'Markdown',
             reply_markup: {
-              inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+              inline_keyboard: [
+                [{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }],
+                [{ text: '💡 О канале', callback_data: 'about' }],
+              ],
             },
           }
       );
@@ -171,7 +174,6 @@ async function sendInviteLink(user, ctx, paymentId) {
         process.env.CHANNEL_ID,
         {
           name: `Invite for user_${user.userId}`,
-          member_limit: 1, // Ограничиваем использование ссылки одним пользователем
           creates_join_request: false,
         }
     );
@@ -214,7 +216,7 @@ async function sendInviteLink(user, ctx, paymentId) {
           paymentStatus: 'succeeded',
           joinedChannel: true,
           inviteLink: chatInvite.invite_link,
-          inviteLinkExpires: null, // Удаляем срок действия для постоянной ссылки
+          inviteLinkExpires: null, // Постоянная ссылка
           paymentDate: new Date(paymentData.created_at),
           paymentDocument,
           lastActivity: new Date(),
@@ -239,7 +241,7 @@ async function sendInviteLink(user, ctx, paymentId) {
     const settings = await getSettings();
     const welcomeMessage = await bot.telegram.sendMessage(
         user.chatId,
-        await getPaidWelcomeMessage(),
+        await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + chatInvite.invite_link + ')',
         {
           parse_mode: 'Markdown',
           reply_markup: {
@@ -254,20 +256,6 @@ async function sendInviteLink(user, ctx, paymentId) {
     ctx.session.botMessages = ctx.session.botMessages || [];
     ctx.session.botMessages.push(welcomeMessage.message_id);
     console.log(`[INVITE] Welcome message sent to user ${user.userId}, message_id: ${welcomeMessage.message_id}`);
-
-    // Отправка персональной ссылки для вступления
-    const inviteMessage = await bot.telegram.sendMessage(
-        user.chatId,
-        'Вот ваша персональная ссылка для вступления в закрытый канал:',
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[{ text: 'Присоединиться', url: chatInvite.invite_link }]],
-          },
-        }
-    );
-    ctx.session.botMessages.push(inviteMessage.message_id);
-    console.log(`[INVITE] Invite link sent to user ${user.userId}, message_id: ${inviteMessage.message_id}`);
 
     // Уведомление администраторов
     for (const adminId of adminIds) {
@@ -308,10 +296,13 @@ bot.command('checkpayment', async (ctx) => {
     }
 
     if (user.paymentStatus === 'succeeded' && user.inviteLink) {
-      return ctx.reply('Ваш платёж уже подтверждён! Вот ваша персональная ссылка:', {
+      return ctx.reply('Ваш платёж уже подтверждён! ' + await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')', {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+          inline_keyboard: [
+            [{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }],
+            [{ text: '💡 О канале', callback_data: 'about' }],
+          ],
         },
       });
     }
@@ -367,7 +358,7 @@ bot.start(async (ctx) => {
     if (user.paymentStatus === 'succeeded' && user.inviteLink) {
       const paidWelcomeMessage = await bot.telegram.sendMessage(
           chatId,
-          await getPaidWelcomeMessage(),
+          await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')',
           {
             parse_mode: 'Markdown',
             reply_markup: {
@@ -381,17 +372,6 @@ bot.start(async (ctx) => {
       ctx.session = ctx.session || {};
       ctx.session.botMessages = ctx.session.botMessages || [];
       ctx.session.botMessages.push(paidWelcomeMessage.message_id);
-      const inviteMessage = await bot.telegram.sendMessage(
-          chatId,
-          'Вот ваша персональная ссылка для вступления в закрытый канал:',
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
-            },
-          }
-      );
-      ctx.session.botMessages.push(inviteMessage.message_id);
     } else {
       const welcomeMessage = await ctx.replyWithMarkdown(await getWelcomeMessage(), {
         reply_markup: {
@@ -636,7 +616,7 @@ bot.action('back', async (ctx) => {
         },
       };
       const backMessage = await (user.paymentStatus === 'succeeded' && user.inviteLink
-          ? ctx.editMessageText(await getPaidWelcomeMessage(), {
+          ? ctx.editMessageText(await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')', {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
@@ -947,10 +927,13 @@ async function processPayment(ctx, userId, chatId) {
     console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
-      const existingMessage = await ctx.reply('Вы уже оплатили доступ! Вот ваша персональная ссылка для вступления в канал:', {
+      const existingMessage = await ctx.reply('Вы уже оплатили доступ! ' + await getPaidWelcomeMessage() + '\n\nВаша персональная ссылка для вступления в закрытый канал: [Присоединиться](' + user.inviteLink + ')', {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]],
+          inline_keyboard: [
+            [{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }],
+            [{ text: '💡 О канале', callback_data: 'about' }],
+          ],
         },
       });
       ctx.session.botMessages = ctx.session.botMessages || [];
