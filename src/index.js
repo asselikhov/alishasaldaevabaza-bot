@@ -85,38 +85,36 @@ console.log('Parsed adminIds:', [...adminIds]);
 
 // Функция валидации вебхука YooKassa
 function validateYookassaWebhook(req) {
-  console.log('[WEBHOOK] Raw body (buffer):', req.body); // Логируем сырой буфер
-  console.log('[WEBHOOK] Raw body (utf8):', req.body.toString('utf8')); // Логируем строку UTF-8
+  console.log('[WEBHOOK] Raw body (buffer):', req.body);
+  console.log('[WEBHOOK] Raw body (utf8):', req.body.toString('utf8'));
   const signatureHeader = req.headers['signature'];
   if (!signatureHeader) {
     console.error('[WEBHOOK] YooKassa webhook validation failed: Missing signature header');
     return false;
   }
 
-  // Разбираем заголовок signature
   const parts = signatureHeader.split(' ');
   if (parts.length < 4 || parts[0] !== 'v1') {
     console.error('[WEBHOOK] YooKassa webhook validation failed: Invalid signature format');
     return false;
   }
 
-  const timestamp = parts[1]; // Временная метка
-  const signature = parts[3]; // Подпись
-  console.log('[WEBHOOK] Timestamp:', timestamp, 'Received Signature:', signature);
+  const timestamp = parts[1];
+  const receivedSignature = parts[3];
+  console.log('[WEBHOOK] Timestamp:', timestamp, 'Received Signature:', receivedSignature);
 
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
   const hmac = crypto.createHmac('sha256', secretKey);
-
-  // Формируем данные для подписи: timestamp + "." + тело запроса
   const rawBody = req.body.toString('utf8');
   const data = `${timestamp}.${rawBody}`;
-  console.log('[WEBHOOK] Data for HMAC:', data); // Логируем данные перед вычислением
+  console.log('[WEBHOOK] Data for HMAC:', data);
   hmac.update(data);
   const computedSignature = hmac.digest('base64');
   console.log('[WEBHOOK] Computed Signature:', computedSignature);
 
-  if (computedSignature !== signature) {
-    console.error(`[WEBHOOK] YooKassa webhook validation failed: Signature mismatch. Expected: ${computedSignature}, Received: ${signature}`);
+  // Сравниваем подписи (пока только для отладки, так как форматы различаются)
+  if (computedSignature !== receivedSignature) {
+    console.error(`[WEBHOOK] YooKassa webhook validation failed: Signature mismatch. Expected: ${computedSignature}, Received: ${receivedSignature}`);
     return false;
   }
 
