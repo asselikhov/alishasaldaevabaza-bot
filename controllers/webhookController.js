@@ -12,16 +12,21 @@ function validateYookassaWebhook(req) {
     return false;
   }
 
-  const parts = signatureHeader.split(' ');
-  if (parts.length < 4 || parts[0] !== 'v1') {
+  const signatures = signatureHeader.split(' ');
+  if (signatures.length < 2 || signatures[0] !== 'v1') {
     console.error('[WEBHOOK] YooKassa webhook validation failed: Invalid signature format');
     return false;
   }
 
-  const signature = parts[1];
-  const hmac = crypto.createHmac('sha256', process.env.YOOKASSA_SECRET_KEY).update(req.body).digest('hex');
+  const signature = signatures[1];
+  const hmac = crypto.createHmac('sha256', process.env.YOOKASSA_SECRET_KEY)
+      .update(req.body)
+      .digest('base64');
+  console.log('[WEBHOOK] Calculated HMAC:', hmac);
+  console.log('[WEBHOOK] Received signature:', signature);
+
   if (hmac !== signature) {
-    console.error('[WEBHOOK] YooKassa webhook validation failed: Invalid signature');
+    console.error('[WEBHOOK] YooKassa webhook validation failed: Signature mismatch');
     return false;
   }
 
