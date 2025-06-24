@@ -36,4 +36,5 @@ temp/
 tmp/
 *.pid
 *.seed
-*.pid.lock
+*.pid.lock.env
+node_modules/
