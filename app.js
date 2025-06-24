@@ -1,8 +1,11 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
-const { bot } = require('./services/telegram');
+const { bot, sendInviteLink } = require('./services/telegram');
 const { processPayment } = require('./controllers/botController');
 const { handleYookassaWebhook } = require('./controllers/webhookController');
+const { getSettings } = require('./services/settings');
+const User = require('./models/User');
+const { getPayment } = require('./services/yookassa');
 require('dotenv').config();
 
 const app = express();
@@ -53,19 +56,32 @@ app.get('/return', async (req, res) => {
   const { paymentId: localPaymentId } = req.query;
   if (localPaymentId) {
     try {
-      const User = require('./models/User');
-      const { getPayment } = require('./services/yookassa');
       const user = await User.findOne({ localPaymentId });
       if (user) {
         const payment = await getPayment(user.paymentId);
-        if (payment.status === 'succeeded') await bot.telegram.sendMessage(user.chatId, 'Оплата успешно подтверждена! Ссылка на канал отправлена в чат.');
-        else await bot.telegram.sendMessage(user.chatId, `Оплата ещё не подтверждена. Статус: ${payment.status}. Попробуйте /checkpayment позже.`);
-      } else console.warn(`No user found for localPaymentId: ${localPaymentId}`);
+        if (payment.status === 'succeeded') {
+          if (!user.joinedChannel && !user.processed) {
+            await sendInviteLink(user, { chat: { id: user.chatId } }, user.paymentId);
+            await User.updateOne({ userId: user.userId }, { processed: true });
+            res.send('Оплата успешно подтверждена! Ссылка на канал отправлена в чат.');
+          } else {
+            res.send('Оплата уже обработана. Ссылка на канал была отправлена ранее.');
+          }
+        } else {
+          await bot.telegram.sendMessage(user.chatId, `Оплата ещё не подтверждена. Статус: ${payment.status}. Попробуйте /checkpayment позже.`);
+          res.send('Оплата ещё не подтверждена.');
+        }
+      } else {
+        console.warn(`No user found for localPaymentId: ${localPaymentId}`);
+        res.status(404).send('Пользователь не найден.');
+      }
     } catch (error) {
       console.error('Error processing /return:', error.stack);
+      res.status(500).send('Ошибка при обработке платежа.');
     }
+  } else {
+    res.status(400).send('Отсутствует paymentId.');
   }
-  res.send('Оплата обработана! Вы будете перенаправлены в Telegram.');
 });
 
 app.get('/health', (req, res) => res.sendStatus(200));
