@@ -18,9 +18,9 @@ function validateYookassaWebhook(req) {
     return false;
   }
 
-  const signature = signatures[1];
+  const signature = signatures[1]; // Используем только значение после 'v1'
   const hmac = crypto.createHmac('sha256', process.env.YOOKASSA_SECRET_KEY)
-      .update(req.body)
+      .update(Buffer.from(req.body)) // Убеждаемся, что используем буфер
       .digest('base64');
   console.log('[WEBHOOK] Calculated HMAC:', hmac);
   console.log('[WEBHOOK] Received signature:', signature);
