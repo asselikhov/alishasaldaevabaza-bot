@@ -192,6 +192,7 @@ bot.action('export_subscribers', async (ctx) => {
     const users = await User.find({ paymentStatus: 'succeeded' }).lean();
     if (!users.length) return ctx.reply('Нет оплаченных подписчиков для выгрузки.');
 
+    const ExcelJS = require('exceljs');
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Subscribers', { properties: { defaultRowHeight: 20 } });
     worksheet.columns = [

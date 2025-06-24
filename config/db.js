@@ -1,6 +1,9 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
 
+// Установка strictQuery для устранения предупреждения Mongoose
+mongoose.set('strictQuery', true);
+
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
