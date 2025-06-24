@@ -1,4 +1,4 @@
-const { Telegraf } = require('telegraf');
+const { Telegraf, session } = require('telegraf');
 const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
 require('dotenv').config();
@@ -9,7 +9,8 @@ bot.catch((err, ctx) => {
   if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
 });
 
-bot.use(require('telegraf/session')());
+// Использование сессии с правильным middleware
+bot.use(session());
 
 async function sendInviteLink(user, ctx, paymentId) {
   try {
@@ -39,6 +40,7 @@ async function sendInviteLink(user, ctx, paymentId) {
     });
     console.log(`[INVITE] Created unique invite link: ${chatInvite.invite_link} for user ${user.userId}`);
 
+    const { getPayment } = require('./yookassa'); // Импорт функции getPayment
     const paymentData = await getPayment(paymentId);
     if (paymentData.status !== 'succeeded') throw new Error(`[INVITE] Payment ${paymentId} status is ${paymentData.status}, expected succeeded`);
 
