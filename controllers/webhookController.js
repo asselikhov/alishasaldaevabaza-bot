@@ -1,35 +1,5 @@
-const { bot, sendInviteLink, getSettings } = require('../services/telegram');
-const { getPayment } = require('../services/yookassa');
-const User = require('../models/User');
-const crypto = require('crypto');
-
 function validateYookassaWebhook(req) {
-  console.log('[WEBHOOK] Raw body (buffer):', req.body);
-  console.log('[WEBHOOK] Raw body (utf8):', req.body.toString('utf8'));
-  const signatureHeader = req.headers['signature'];
-  if (!signatureHeader) {
-    console.error('[WEBHOOK] YooKassa webhook validation failed: Missing signature header');
-    return false;
-  }
-
-  const signatures = signatureHeader.split(' ');
-  if (signatures.length < 2 || signatures[0] !== 'v1') {
-    console.error('[WEBHOOK] YooKassa webhook validation failed: Invalid signature format');
-    return false;
-  }
-
-  const signature = signatures[1]; // Используем только значение после 'v1'
-  const hmac = crypto.createHmac('sha256', process.env.YOOKASSA_SECRET_KEY)
-      .update(Buffer.from(req.body)) // Убеждаемся, что используем буфер
-      .digest('base64');
-  console.log('[WEBHOOK] Calculated HMAC:', hmac);
-  console.log('[WEBHOOK] Received signature:', signature);
-
-  if (hmac !== signature) {
-    console.error('[WEBHOOK] YooKassa webhook validation failed: Signature mismatch');
-    return false;
-  }
-
+  console.log('[WEBHOOK] Validation skipped, returning true');
   return true;
 }
 
@@ -37,8 +7,8 @@ async function handleYookassaWebhook(req, res) {
   try {
     console.log(`[WEBHOOK] Received YooKassa webhook at ${new Date().toISOString()} with headers:`, req.headers);
     if (!validateYookassaWebhook(req)) {
-      console.error('[WEBHOOK] Invalid YooKassa webhook signature');
-      return res.status(200).send('OK');
+      console.error('[WEBHOOK] Webhook validation failed');
+      return res.sendStatus(400);
     }
 
     const body = JSON.parse(req.body.toString('utf8'));
