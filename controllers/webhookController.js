@@ -1,3 +1,9 @@
+const { bot, sendInviteLink, getSettings } = require('../services/telegram');
+const User = require('../models/User');
+
+// Проверка импорта модели User
+console.log('[WEBHOOK] User model loaded:', typeof User === 'function' ? 'Success' : 'Failed');
+
 function validateYookassaWebhook(req) {
   console.log('[WEBHOOK] Validation skipped, returning true');
   return true;
@@ -17,6 +23,9 @@ async function handleYookassaWebhook(req, res) {
     const { event, object } = body;
     if (event === 'payment.succeeded') {
       console.log(`[WEBHOOK] Processing payment.succeeded for paymentId: ${object.id}`);
+      if (!User) {
+        throw new Error('User model is not defined');
+      }
       let user = await User.findOne({ paymentId: object.id });
       if (!user) {
         console.warn(`[WEBHOOK] No user found for paymentId: ${object.id}, searching by metadata or creating...`);
