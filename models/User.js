@@ -9,6 +9,7 @@ const UserSchema = new mongoose.Schema({
   joinedChannel: { type: Boolean, default: false },
   inviteLink: String,
   inviteLinkExpires: Number,
+  inviteLinkUsed: { type: Boolean, default: false },
   firstName: String,
   username: String,
   phoneNumber: String,

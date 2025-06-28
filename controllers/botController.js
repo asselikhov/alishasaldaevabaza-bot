@@ -1,6 +1,7 @@
 const { bot, sendInviteLink, getSettings, getWelcomeMessage, getPaidWelcomeMessage } = require('../services/telegram');
 const { createPayment, getPayment } = require('../services/yookassa');
 const User = require('../models/User');
+const Settings = require('../models/Settings'); // Импорт модели Settings
 
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 
@@ -486,30 +487,35 @@ bot.on('text', async (ctx) => {
 
     if (ctx.session.editing === 'channelDescription') {
       if (text.length < 10) return ctx.reply('Описание должно быть не короче 10 символов. Попробуйте снова:');
-      cachedSettings = await Settings.findOneAndUpdate({}, { channelDescription: text }, { upsert: true, new: true });
+      await Settings.findOneAndUpdate({}, { channelDescription: text }, { upsert: true, new: true });
+      console.log(`[SETTINGS] Updated channelDescription for user ${userId}`);
       ctx.session.editing = null;
       await ctx.reply('Описание канала обновлено!');
     } else if (ctx.session.editing === 'supportLink') {
       let supportLink = text;
       if (supportLink.startsWith('@')) supportLink = `https://t.me/${supportLink.slice(1)}`;
       else if (!supportLink.match(/^https?:\/\//)) return ctx.reply('Введите действительный URL или Telegram-username (например, @Username). Попробуйте снова:');
-      cachedSettings = await Settings.findOneAndUpdate({}, { supportLink }, { upsert: true, new: true });
+      await Settings.findOneAndUpdate({}, { supportLink }, { upsert: true, new: true });
+      console.log(`[SETTINGS] Updated supportLink for user ${userId}`);
       ctx.session.editing = null;
       await ctx.reply('Ссылка на техподдержку обновлена!');
     } else if (ctx.session.editing === 'welcomeMessage') {
       if (text.length < 10) return ctx.reply('Приветственное сообщение должно быть не короче 10 символов. Попробуйте снова:');
-      cachedSettings = await Settings.findOneAndUpdate({}, { welcomeMessage: text }, { upsert: true, new: true });
+      await Settings.findOneAndUpdate({}, { welcomeMessage: text }, { upsert: true, new: true });
+      console.log(`[SETTINGS] Updated welcomeMessage for user ${userId}`);
       ctx.session.editing = null;
       await ctx.reply('Приветственное сообщение обновлено!');
     } else if (ctx.session.editing === 'paymentAmount') {
       const amount = parseFloat(text);
-      if (isNaN(amount) || amount <= 0) return ctx.reply('Пожалуйста, введите корректную сумму больше 0 (например, 499):');
-      cachedSettings = await Settings.findOneAndUpdate({}, { paymentAmount: amount }, { upsert: true, new: true });
+      if (isNaN(amount) || amount < 1 || amount > 100000) return ctx.reply('Сумма должна быть от 1 до 100000 рублей.');
+      await Settings.findOneAndUpdate({}, { paymentAmount: amount }, { upsert: true, new: true });
+      console.log(`[SETTINGS] Updated paymentAmount to ${amount} for user ${userId}`);
       ctx.session.editing = null;
       await ctx.reply(`Сумма оплаты обновлена на ${amount} руб.!`);
     } else if (ctx.session.editing === 'paidWelcomeMessage') {
       if (text.length < 10) return ctx.reply('Приветственное сообщение после оплаты должно быть не короче 10 символов. Попробуйте снова:');
-      cachedSettings = await Settings.findOneAndUpdate({}, { paidWelcomeMessage: text }, { upsert: true, new: true });
+      await Settings.findOneAndUpdate({}, { paidWelcomeMessage: text }, { upsert: true, new: true });
+      console.log(`[SETTINGS] Updated paidWelcomeMessage for user ${userId}`);
       ctx.session.editing = null;
       await ctx.reply('Приветственное сообщение после оплаты обновлено!');
     }
