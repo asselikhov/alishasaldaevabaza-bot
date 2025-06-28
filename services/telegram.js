@@ -1,6 +1,7 @@
 const { Telegraf, session } = require('telegraf');
 const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
+const { getSettings, resetSettingsCache } = require('./settings');
 require('dotenv').config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -140,4 +141,11 @@ async function getPaidWelcomeMessage() {
   return settings.paidWelcomeMessage;
 }
 
-module.exports = { bot, sendInviteLink, getSettings, getWelcomeMessage, getPaidWelcomeMessage };
+module.exports = {
+  bot,
+  sendInviteLink,
+  getSettings,
+  getWelcomeMessage,
+  getPaidWelcomeMessage,
+  resetSettingsCache
+};
