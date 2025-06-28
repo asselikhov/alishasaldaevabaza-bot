@@ -126,11 +126,6 @@ bot.on('chat_member', async (ctx) => {
   }
 });
 
-async function getSettings() {
-  const settings = require('./settings');
-  return settings.getSettings();
-}
-
 async function getWelcomeMessage() {
   const settings = await getSettings();
   return settings.welcomeMessage;
