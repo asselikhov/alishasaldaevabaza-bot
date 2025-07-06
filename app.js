@@ -34,6 +34,12 @@ console.log('All required environment variables are set');
 
 // Подключение MongoDB
 mongoose.set('strictQuery', true);
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('Connected to MongoDB: ' + process.env.MONGODB_URI.replace(/\/\/.*@/, '//[hidden]@')))
+    .catch(err => {
+      console.error('MongoDB connection error:', err);
+      process.exit(1);
+    });
 
 // Глобальный обработчик ошибок Telegraf
 bot.catch((err, ctx) => {
