@@ -5,8 +5,6 @@ const User = require('../models/User');
 const Settings = require('../models/Settings');
 const { createCanvas } = require('canvas');
 const Chart = require('chart.js/auto');
-const ChartDataLabels = require('chartjs-plugin-datalabels');
-const { AnnotationPlugin } = require('chartjs-plugin-annotation');
 
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 
@@ -163,18 +161,11 @@ async function generateActivityChart(dailyActivity) {
 
     console.log(`[GENERATE_ACTIVITY_CHART] Labels: ${JSON.stringify(labels)}, Data: ${JSON.stringify(data)}`);
 
-    const maxActivity = Math.max(...data);
-    const maxIndex = data.indexOf(maxActivity);
-    const maxDate = labels[maxIndex];
-
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
     gradient.addColorStop(0, '#1E1E1E');
     gradient.addColorStop(1, '#2D2D2D');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 800, 400);
-
-    // Регистрация плагинов
-    Chart.register(ChartDataLabels, AnnotationPlugin);
 
     new Chart(ctx, {
       type: 'line',
@@ -218,32 +209,6 @@ async function generateActivityChart(dailyActivity) {
             font: { size: 16, family: 'Inter, sans-serif', weight: '600' },
             color: '#E5E7EB',
             padding: { top: 10, bottom: 10 },
-          },
-          datalabels: {
-            display: true,
-            color: '#E5E7EB',
-            font: { size: 12, family: 'Inter, sans-serif' },
-            anchor: 'end',
-            align: 'top',
-            formatter: (value) => value > 0 ? value : '',
-            backgroundColor: 'rgba(59, 130, 246, 0.8)',
-            borderRadius: 3,
-            padding: 4,
-          },
-          annotation: {
-            annotations: maxActivity > 0 ? [{
-              type: 'label',
-              xValue: maxIndex,
-              yValue: maxActivity,
-              content: `Пик: ${maxActivity}`,
-              backgroundColor: 'rgba(59, 130, 246, 0.9)',
-              color: '#FFFFFF',
-              font: { size: 12, family: 'Inter, sans-serif' },
-              borderRadius: 3,
-              padding: 4,
-              position: 'center',
-              yAdjust: -20,
-            }] : [],
           },
         },
         scales: {
