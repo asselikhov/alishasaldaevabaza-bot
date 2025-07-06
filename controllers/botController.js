@@ -145,156 +145,264 @@ function escapeMarkdownV2(text) {
 }
 
 async function generateActivityChart(dailyActivity) {
-  const canvas = createCanvas(800, 400); // Уменьшенный размер для Telegram
-  const ctx = canvas.getContext('2d');
+  try {
+    console.log(`[GENERATE_ACTIVITY_CHART] Input data: ${JSON.stringify(dailyActivity)}`);
+    if (!Array.isArray(dailyActivity) || dailyActivity.some(entry => !entry.date || typeof entry.count !== 'number')) {
+      throw new Error('Invalid dailyActivity data format');
+    }
 
-  const labels = dailyActivity.map(entry => {
-    const [year, month, day] = entry.date.split('-');
-    return `${day}.${month}`;
-  });
-  const data = dailyActivity.map(entry => entry.count);
+    const canvas = createCanvas(800, 400);
+    const ctx = canvas.getContext('2d');
 
-  // Находим максимальную активность для аннотации
-  const maxActivity = Math.max(...data);
-  const maxIndex = data.indexOf(maxActivity);
-  const maxDate = labels[maxIndex];
+    const labels = dailyActivity.map(entry => {
+      const [year, month, day] = entry.date.split('-');
+      return `${day}.${month}`;
+    });
+    const data = dailyActivity.map(entry => entry.count);
 
-  // Темный фон с градиентом
-  const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-  gradient.addColorStop(0, '#1E1E1E');
-  gradient.addColorStop(1, '#2D2D2D');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 800, 400);
+    const maxActivity = Math.max(...data);
+    const maxIndex = data.indexOf(maxActivity);
+    const maxDate = labels[maxIndex];
 
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Активные пользователи',
-        data: data,
-        borderColor: '#3B82F6', // Мягкий синий
-        borderWidth: 3,
-        pointBackgroundColor: '#3B82F6',
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        tension: 0.4, // Плавные линии
-        fill: {
-          target: 'origin',
-          above: 'rgba(59, 130, 246, 0.1)', // Легкая заливка
-        },
-      }],
-    },
-    options: {
-      responsive: true,
-      animation: {
-        duration: 1000, // Плавная анимация
-        easing: 'easeOutQuart',
-      },
-      plugins: {
-        legend: {
-          display: true,
-          position: 'top',
-          labels: {
-            font: { size: 14, family: 'Inter, sans-serif' },
-            color: '#E5E7EB', // Светлый серый
-            boxWidth: 20,
-            padding: 15,
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, '#1E1E1E');
+    gradient.addColorStop(1, '#2D2D2D');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 800, 400);
+
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Активные пользователи',
+          data: data,
+          borderColor: '#3B82F6',
+          borderWidth: 3,
+          pointBackgroundColor: '#3B82F6',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.4,
+          fill: {
+            target: 'origin',
+            above: 'rgba(59, 130, 246, 0.1)',
           },
+        }],
+      },
+      options: {
+        responsive: true,
+        animation: {
+          duration: 1000,
+          easing: 'easeOutQuart',
         },
-        title: {
-          display: true,
-          text: 'Активность пользователей за Июль 2025',
-          font: { size: 16, family: 'Inter, sans-serif', weight: '600' },
-          color: '#E5E7EB',
-          padding: { top: 10, bottom: 10 },
-        },
-        datalabels: {
-          display: true,
-          color: '#E5E7EB',
-          font: { size: 12, family: 'Inter, sans-serif' },
-          anchor: 'end',
-          align: 'top',
-          formatter: (value) => value > 0 ? value : '',
-          backgroundColor: 'rgba(59, 130, 246, 0.8)',
-          borderRadius: 3,
-          padding: 4,
-        },
-        annotation: {
-          annotations: maxActivity > 0 ? [{
-            type: 'label',
-            xValue: maxIndex,
-            yValue: maxActivity,
-            content: `Пик: ${maxActivity}`,
-            backgroundColor: 'rgba(59, 130, 246, 0.9)',
-            color: '#FFFFFF',
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              font: { size: 14, family: 'Inter, sans-serif' },
+              color: '#E5E7EB',
+              boxWidth: 20,
+              padding: 15,
+            },
+          },
+          title: {
+            display: true,
+            text: 'Активность пользователей за Июль 2025',
+            font: { size: 16, family: 'Inter, sans-serif', weight: '600' },
+            color: '#E5E7EB',
+            padding: { top: 10, bottom: 10 },
+          },
+          datalabels: {
+            display: true,
+            color: '#E5E7EB',
             font: { size: 12, family: 'Inter, sans-serif' },
+            anchor: 'end',
+            align: 'top',
+            formatter: (value) => value > 0 ? value : '',
+            backgroundColor: 'rgba(59, 130, 246, 0.8)',
             borderRadius: 3,
             padding: 4,
-            position: 'center',
-            yAdjust: -20,
-          }] : [],
+          },
+          annotation: {
+            annotations: maxActivity > 0 ? [{
+              type: 'label',
+              xValue: maxIndex,
+              yValue: maxActivity,
+              content: `Пик: ${maxActivity}`,
+              backgroundColor: 'rgba(59, 130, 246, 0.9)',
+              color: '#FFFFFF',
+              font: { size: 12, family: 'Inter, sans-serif' },
+              borderRadius: 3,
+              padding: 4,
+              position: 'center',
+              yAdjust: -20,
+            }] : [],
+          },
+        },
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Дата',
+              font: { size: 12, family: 'Inter, sans-serif', weight: '500' },
+              color: '#E5E7EB',
+            },
+            ticks: {
+              color: '#E5E7EB',
+              font: { size: 10, family: 'Inter, sans-serif' },
+              maxRotation: 45,
+              minRotation: 45,
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.05)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+              drawBorder: false,
+            },
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Пользователи',
+              font: { size: 12, family: 'Inter, sans-serif', weight: '500' },
+              color: '#E5E7EB',
+            },
+            ticks: {
+              color: '#E5E7EB',
+              font: { size: 10, family: 'Inter, sans-serif' },
+              beginAtZero: true,
+              stepSize: 1,
+              precision: 0,
+              callback: (value) => Number.isInteger(value) ? value : null,
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.05)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+              drawBorder: false,
+            },
+            min: 0,
+            max: Math.max(...data, 10) + 5,
+          },
+        },
+        elements: {
+          line: {
+            borderJoinStyle: 'round',
+            borderCapStyle: 'round',
+          },
+          point: {
+            hoverBorderWidth: 2,
+          },
         },
       },
-      scales: {
-        x: {
-          title: {
-            display: true,
-            text: 'Дата',
-            font: { size: 12, family: 'Inter, sans-serif', weight: '500' },
-            color: '#E5E7EB',
-          },
-          ticks: {
-            color: '#E5E7EB',
-            font: { size: 10, family: 'Inter, sans-serif' },
-            maxRotation: 45,
-            minRotation: 45,
-          },
-          grid: {
-            color: 'rgba(255, 255, 255, 0.05)',
-            borderColor: 'rgba(255, 255, 255, 0.2)',
-            drawBorder: false,
-          },
-        },
-        y: {
-          title: {
-            display: true,
-            text: 'Пользователи',
-            font: { size: 12, family: 'Inter, sans-serif', weight: '500' },
-            color: '#E5E7EB',
-          },
-          ticks: {
-            color: '#E5E7EB',
-            font: { size: 10, family: 'Inter, sans-serif' },
-            beginAtZero: true,
-            stepSize: 1,
-            precision: 0,
-            callback: (value) => Number.isInteger(value) ? value : null,
-          },
-          grid: {
-            color: 'rgba(255, 255, 255, 0.05)',
-            borderColor: 'rgba(255, 255, 255, 0.2)',
-            drawBorder: false,
-          },
-          min: 0,
-          max: Math.max(...data, 10) + 5,
-        },
-      },
-      elements: {
-        line: {
-          borderJoinStyle: 'round',
-          borderCapStyle: 'round',
-        },
-        point: {
-          hoverBorderWidth: 2,
-        },
-      },
-    },
-    plugins: [require('chartjs-plugin-datalabels'), ChartAnnotation],
-  });
+      plugins: [require('chartjs-plugin-datalabels'), ChartAnnotation],
+    });
 
-  return canvas.toBuffer('image/png');
+    const buffer = canvas.toBuffer('image/png');
+    console.log(`[GENERATE_ACTIVITY_CHART] Chart generated successfully for ${dailyActivity.length} data points`);
+    return buffer;
+  } catch (error) {
+    console.error(`[GENERATE_ACTIVITY_CHART] Error: ${error.message}`);
+    throw error;
+  }
 }
+
+bot.action('stats', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+  const chatId = String(ctx.chat.id);
+  if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
+
+  try {
+    console.log(`[STATS] Processing for user ${userId}`);
+    await User.updateOne({ userId }, { lastActivity: new Date() });
+
+    // Собираем текстовую статистику
+    const totalUsers = await User.countDocuments();
+    const paidUsers = await User.countDocuments({ paymentStatus: 'succeeded' });
+    const activeUsersLast24h = await User.find({
+      lastActivity: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    }).select('firstName username userId');
+
+    let activeUsersList = 'Нет активных пользователей за последние 24 часа.';
+    if (activeUsersLast24h.length > 0) {
+      activeUsersList = activeUsersLast24h
+          .map(
+              (user, index) =>
+                  `${escapeMarkdownV2(String(index + 1))}\\. ${escapeMarkdownV2(user.firstName)} \\(@${escapeMarkdownV2(user.username || 'без username')}, ID: ${escapeMarkdownV2(user.userId)}\\)`
+          )
+          .join('\n');
+    }
+
+    let statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
+
+    if (statsMessage.length > 1024) {
+      const maxListLength = 1024 - statsMessage.length + activeUsersList.length - 50;
+      activeUsersList = activeUsersList.substring(0, maxListLength) + '\n...и другие';
+      statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
+    }
+
+    console.log(`[STATS] Generated statsMessage for user ${userId}: ${statsMessage}`);
+
+    // Собираем данные для графика
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const dailyActivity = await User.aggregate([
+      {
+        $match: {
+          lastActivity: { $gte: startOfMonth, $lte: today },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$lastActivity', timezone: 'Europe/Moscow' },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { '_id': 1 },
+      },
+    ]);
+
+    // Формируем полный список дат
+    const dateArray = [];
+    let currentDate = new Date(startOfMonth);
+    while (currentDate <= today) {
+      const dateStr = currentDate.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).split('.').reverse().join('-');
+      const found = dailyActivity.find(d => d._id === dateStr);
+      dateArray.push({ date: dateStr, count: found ? found.count : 0 });
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    console.log(`[STATS] Generated dateArray: ${JSON.stringify(dateArray)}`);
+
+    // Генерируем график
+    const chartBuffer = await generateActivityChart(dateArray);
+
+    ctx.session = ctx.session || {};
+    ctx.session.navHistory = ctx.session.navHistory || [];
+    ctx.session.navHistory.push('admin_panel');
+
+    // Отправляем график
+    const sentMessage = await ctx.replyWithPhoto(
+        { source: chartBuffer },
+        {
+          caption: statsMessage,
+          parse_mode: 'MarkdownV2',
+          reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
+        }
+    );
+    ctx.session.currentMessageId = sentMessage.message_id;
+    console.log(`[STATS] Sent photo with stats caption, message_id: ${sentMessage.message_id} for user ${userId}`);
+  } catch (error) {
+    console.error(`[STATS] Error for user ${userId}: ${error.message}`, error.stack);
+    await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
+  }
+});
 
 bot.action('admin_panel', async (ctx) => {
   await ctx.answerCbQuery();
@@ -348,103 +456,6 @@ bot.action('admin_panel', async (ctx) => {
   } catch (error) {
     console.error(`[ADMIN_PANEL] Error for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при открытии админ-панели.');
-  }
-});
-
-bot.action('stats', async (ctx) => {
-  await ctx.answerCbQuery();
-  const userId = String(ctx.from.id);
-  const chatId = String(ctx.chat.id);
-  if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
-
-  try {
-    console.log(`[STATS] Processing for user ${userId}`);
-    await User.updateOne({ userId }, { lastActivity: new Date() });
-
-    // Собираем текстовую статистику
-    const totalUsers = await User.countDocuments();
-    const paidUsers = await User.countDocuments({ paymentStatus: 'succeeded' });
-    const activeUsersLast24h = await User.find({
-      lastActivity: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-    }).select('firstName username userId');
-
-    let activeUsersList = 'Нет активных пользователей за последние 24 часа.';
-    if (activeUsersLast24h.length > 0) {
-      activeUsersList = activeUsersLast24h
-          .map(
-              (user, index) =>
-                  `${escapeMarkdownV2(String(index + 1))}\\. ${escapeMarkdownV2(user.firstName)} \\(@${escapeMarkdownV2(user.username || 'без username')}, ID: ${escapeMarkdownV2(user.userId)}\\)`
-          )
-          .join('\n');
-    }
-
-    let statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
-
-    // Проверяем длину сообщения и обрезаем, если оно превышает 1024 символа
-    if (statsMessage.length > 1024) {
-      const maxListLength = 1024 - statsMessage.length + activeUsersList.length - 50;
-      activeUsersList = activeUsersList.substring(0, maxListLength) + '\n...и другие';
-      statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
-    }
-
-    console.log(`[STATS] Generated statsMessage for user ${userId}: ${statsMessage}`);
-
-    // Собираем данные для графика (текущий месяц)
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
-    const dailyActivity = await User.aggregate([
-      {
-        $match: {
-          lastActivity: { $gte: startOfMonth, $lte: today },
-        },
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$lastActivity', timezone: 'Europe/Moscow' },
-          },
-          count: { $sum: 1 },
-        },
-      },
-      {
-        $sort: { '_id': 1 },
-      },
-    ]);
-
-    // Формируем полный список дат для текущего месяца, включая дни без активности
-    const dateArray = [];
-    let currentDate = new Date(startOfMonth);
-    while (currentDate <= today) {
-      const dateStr = currentDate.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).split('.').reverse().join('-');
-      const found = dailyActivity.find(d => d._id === dateStr);
-      dateArray.push({ date: dateStr, count: found ? found.count : 0 });
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    // Генерируем график
-    const chartBuffer = await generateActivityChart(dateArray);
-
-    ctx.session = ctx.session || {};
-    ctx.session.navHistory = ctx.session.navHistory || [];
-    ctx.session.navHistory.push('admin_panel');
-
-    // Отправляем график с текстовой статистикой в подписи
-    const sentMessage = await ctx.replyWithPhoto(
-        { source: chartBuffer },
-        {
-          caption: statsMessage,
-          parse_mode: 'MarkdownV2',
-          reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
-        }
-    );
-    ctx.session.currentMessageId = sentMessage.message_id;
-    console.log(`[STATS] Sent photo with stats caption, message_id: ${ctx.session.currentMessageId} for user ${userId}`);
-  } catch (error) {
-    console.error(`[STATS] Error for user ${userId}:`, error.message);
-    await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
   }
 });
 
