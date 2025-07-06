@@ -172,7 +172,6 @@ async function generateActivityChart(dailyActivity) {
       data: {
         labels: labels,
         datasets: [{
-          label: 'Активные пользователи',
           data: data,
           borderColor: '#3B82F6',
           borderWidth: 3,
@@ -194,20 +193,13 @@ async function generateActivityChart(dailyActivity) {
         },
         plugins: {
           legend: {
-            display: true,
-            position: 'top',
-            labels: {
-              font: { size: 14, family: 'Inter, sans-serif' },
-              color: '#E5E7EB',
-              boxWidth: 20,
-              padding: 15,
-            },
+            display: false,
           },
           title: {
             display: true,
             text: 'Активность пользователей за Июль 2025',
             font: { size: 16, family: 'Inter, sans-serif', weight: '600' },
-            color: '#E5E7EB',
+            color: '#A0AEC0',
             padding: { top: 10, bottom: 10 },
           },
         },
@@ -217,10 +209,10 @@ async function generateActivityChart(dailyActivity) {
               display: true,
               text: 'Дата',
               font: { size: 12, family: 'Inter, sans-serif', weight: '500' },
-              color: '#E5E7EB',
+              color: '#A0AEC0',
             },
             ticks: {
-              color: '#E5E7EB',
+              color: '#A0AEC0',
               font: { size: 10, family: 'Inter, sans-serif' },
               maxRotation: 45,
               minRotation: 45,
@@ -236,10 +228,10 @@ async function generateActivityChart(dailyActivity) {
               display: true,
               text: 'Пользователи',
               font: { size: 12, family: 'Inter, sans-serif', weight: '500' },
-              color: '#E5E7EB',
+              color: '#A0AEC0',
             },
             ticks: {
-              color: '#E5E7EB',
+              color: '#A0AEC0',
               font: { size: 10, family: 'Inter, sans-serif' },
               beginAtZero: true,
               stepSize: 1,
