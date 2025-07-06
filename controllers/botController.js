@@ -106,18 +106,18 @@ bot.start(async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     const sentMessage = await ctx.replyWithMarkdown(
-        user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage(),
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
-                { text: '💬 Техподдержка', url: settings.supportLink },
-              ],
-              ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
+      user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage(),
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+              { text: '💬 Техподдержка', url: settings.supportLink },
             ],
-          },
-        }
+            ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
+          ],
+        },
+      }
     );
     ctx.session.currentMessageId = sentMessage.message_id;
     console.log(`[START] Reply sent to ${userId}, stored message_id: ${ctx.session.currentMessageId}`);
@@ -130,7 +130,7 @@ bot.start(async (ctx) => {
 // Функция для экранирования специальных символов в MarkdownV2
 function escapeMarkdownV2(text) {
   if (!text) return text;
-  return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
+  return text.replace(/([_*[\]()~`>#+\-=|{}\.!\\])/g, '\\$1');
 }
 
 bot.action('admin_panel', async (ctx) => {
@@ -209,13 +209,15 @@ bot.action('stats', async (ctx) => {
           .map(
               (user, index) =>
                   `${index + 1}\\. ${escapeMarkdownV2(user.firstName)} \\(${
-                      user.username ? `@${escapeMarkdownV2(user.username)}` : ''
-                  }, ID: ${user.userId}\\)`
+                      user.username ? `@${escapeMarkdownV2(user.username)}` : 'без username'
+                  }, ID: ${escapeMarkdownV2(user.userId)}\\)`
           )
           .join('\n');
     }
 
-    const statsMessage = escape(`📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`);
+    // Экранируем весь statsMessage, включая разделители
+    const statsMessage = escapeMarkdownV2(`📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`);
+
     console.log(`[STATS] Generated statsMessage for user ${userId}: ${statsMessage}`);
 
     ctx.session = ctx.session || {};
@@ -378,8 +380,9 @@ bot.action('back', async (ctx) => {
         console.log(`[BACK] Edited message ${messageId} for user ${userId}`);
       } catch (editError) {
         console.warn(`[BACK] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
-        if (editError.message.includes('message can\'t be edited')) {
-          ctx.session.currentMessageId = null;
+        if (editError.message.includes('message is not modified')) {
+          console.log(`[BACK] Message ${messageId} not modified, keeping current state for user ${userId}`);
+          return;
         }
         const sentMessage = await ctx.replyWithMarkdown(newText, { reply_markup: replyMarkup });
         ctx.session.currentMessageId = sentMessage.message_id;
@@ -415,8 +418,9 @@ bot.action('back', async (ctx) => {
         console.log(`[BACK] Edited message ${messageId} for user ${userId}`);
       } catch (editError) {
         console.warn(`[BACK] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
-        if (editError.message.includes('message can\'t be edited')) {
-          ctx.session.currentMessageId = null;
+        if (editError.message.includes('message is not modified')) {
+          console.log(`[BACK] Message ${messageId} not modified, keeping current state for user ${userId}`);
+          return;
         }
         const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
           parse_mode: 'Markdown',
