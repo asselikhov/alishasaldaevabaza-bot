@@ -105,18 +105,18 @@ bot.start(async (ctx) => {
     console.log(`[START] Sending reply to ${userId}`);
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
+    const inlineKeyboard = [
+      user.paymentStatus === 'succeeded' ? [] : [
+        { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+        { text: '💬 Техподдержка', url: settings.supportLink },
+      ],
+      ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
+    ].filter(row => row.length > 0); // Удаляем пустые строки
+
     const sentMessage = await ctx.replyWithMarkdown(
         user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage(),
         {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
-                { text: '💬 Техподдержка', url: settings.supportLink },
-              ],
-              ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
-            ],
-          },
+          reply_markup: { inline_keyboard: inlineKeyboard },
         }
     );
     ctx.session.currentMessageId = sentMessage.message_id;
@@ -175,7 +175,7 @@ bot.action('admin_panel', async (ctx) => {
       }
     } else {
       console.warn(`[ADMIN_PANEL] No valid message_id for user ${userId}, sending new message`);
-      const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+      const sentMessage = await ctx.reply('Админка:\n➖➖➖�                                                     ➖➖➖➖➖➖➖', {
         parse_mode: 'Markdown',
         reply_markup: replyMarkup,
       });
@@ -347,24 +347,22 @@ bot.action('back', async (ctx) => {
     if (lastAction === 'start') {
       const settings = await getSettings();
       const user = await User.findOne({ userId });
-      const replyMarkup = {
-        inline_keyboard: [
-          [
-            { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
-            { text: '💬 Техподдержка', url: settings.supportLink },
-          ],
-          ...(adminIds.has(userId)
-              ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]]
-              : [[{ text: '💡 О канале', callback_data: 'about' }]]),
+      const inlineKeyboard = [
+        user.paymentStatus === 'succeeded' ? [] : [
+          { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+          { text: '💬 Техподдержка', url: settings.supportLink },
         ],
-      };
+        ...(adminIds.has(userId)
+            ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]]
+            : [[{ text: '💡 О канале', callback_data: 'about' }]]),
+      ].filter(row => row.length > 0); // Удаляем пустые строки
 
-      const newText = user.paymentStatus === 'succeeded' && user.inviteLink ? await getPaidWelcomeMessage() : await getWelcomeMessage();
+      const newText = user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage();
       const messageId = ctx.message?.message_id || ctx.session.currentMessageId;
 
       if (!messageId) {
         console.warn(`[BACK] No message_id available for user ${userId}, sending new message`);
-        const sentMessage = await ctx.replyWithMarkdown(newText, { reply_markup: replyMarkup });
+        const sentMessage = await ctx.replyWithMarkdown(newText, { reply_markup: { inline_keyboard: inlineKeyboard } });
         ctx.session.currentMessageId = sentMessage.message_id;
         console.log(`[BACK] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
         return;
@@ -373,7 +371,7 @@ bot.action('back', async (ctx) => {
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, newText, {
           parse_mode: 'Markdown',
-          reply_markup: replyMarkup,
+          reply_markup: { inline_keyboard: inlineKeyboard },
         });
         console.log(`[BACK] Edited message ${messageId} for user ${userId}`);
       } catch (editError) {
@@ -382,7 +380,7 @@ bot.action('back', async (ctx) => {
           console.log(`[BACK] Message ${messageId} not modified, keeping current state for user ${userId}`);
           return;
         }
-        const sentMessage = await ctx.replyWithMarkdown(newText, { reply_markup: replyMarkup });
+        const sentMessage = await ctx.replyWithMarkdown(newText, { reply_markup: { inline_keyboard: inlineKeyboard } });
         ctx.session.currentMessageId = sentMessage.message_id;
         console.log(`[BACK] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
       }
@@ -420,7 +418,7 @@ bot.action('back', async (ctx) => {
           console.log(`[BACK] Message ${messageId} not modified, keeping current state for user ${userId}`);
           return;
         }
-        const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖� лично➖➖➖➖➖', {
+        const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
           parse_mode: 'Markdown',
           reply_markup: replyMarkup,
         });
