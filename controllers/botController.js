@@ -106,18 +106,18 @@ bot.start(async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     const sentMessage = await ctx.replyWithMarkdown(
-      user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage(),
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
-              { text: '💬 Техподдержка', url: settings.supportLink },
+        user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage(),
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+                { text: '💬 Техподдержка', url: settings.supportLink },
+              ],
+              ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
             ],
-            ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
-          ],
-        },
-      }
+          },
+        }
     );
     ctx.session.currentMessageId = sentMessage.message_id;
     console.log(`[START] Reply sent to ${userId}, stored message_id: ${ctx.session.currentMessageId}`);
@@ -208,15 +208,13 @@ bot.action('stats', async (ctx) => {
       activeUsersList = activeUsersLast24h
           .map(
               (user, index) =>
-                  `${index + 1}\\. ${escapeMarkdownV2(user.firstName)} \\(${
-                      user.username ? `@${escapeMarkdownV2(user.username)}` : 'без username'
-                  }, ID: ${escapeMarkdownV2(user.userId)}\\)`
+                  `${escapeMarkdownV2(String(index + 1))}\\. ${escapeMarkdownV2(user.firstName)} \\(@${escapeMarkdownV2(user.username || 'без username')}, ID: ${escapeMarkdownV2(user.userId)}\\)`
           )
           .join('\n');
     }
 
-    // Экранируем весь statsMessage, включая разделители
-    const statsMessage = escapeMarkdownV2(`📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`);
+    // Экранируем только те части, которые содержат специальные символы
+    const statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
 
     console.log(`[STATS] Generated statsMessage for user ${userId}: ${statsMessage}`);
 
@@ -331,7 +329,7 @@ bot.action('export_subscribers', async (ctx) => {
     await ctx.replyWithDocument({ source: buffer, filename: `subscribers_${new Date().toISOString().split('T')[0]}.xlsx` });
   } catch (error) {
     console.error(`[EXPORT_SUBSCRIBERS] Error for user ${userId}:`, error.message);
-    await ctx.reply('Ошибка передачи подписчиков. Попробуйте позже.');
+    Рawait ctx.reply('Ошибка передачи подписчиков. Попробуйте позже.');
   }
 });
 
@@ -422,7 +420,7 @@ bot.action('back', async (ctx) => {
           console.log(`[BACK] Message ${messageId} not modified, keeping current state for user ${userId}`);
           return;
         }
-        const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+        const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖� лично➖➖➖➖➖', {
           parse_mode: 'Markdown',
           reply_markup: replyMarkup,
         });
