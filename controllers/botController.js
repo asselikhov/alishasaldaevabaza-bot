@@ -127,7 +127,7 @@ bot.start(async (ctx) => {
 // Функция для экранирования специальных символов в MarkdownV2
 function escapeMarkdownV2(text) {
   if (!text) return text;
-  return text.replace(/([_*[\]()~`>#+\-=|{}.!|])/g, '\\$1');
+  return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
 }
 
 bot.action('admin_panel', async (ctx) => {
@@ -151,7 +151,7 @@ bot.action('admin_panel', async (ctx) => {
       ],
     };
 
-    let messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+    let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
     if (messageId && ctx.message) {
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, 'Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
@@ -203,7 +203,7 @@ bot.action('stats', async (ctx) => {
       activeUsersList = activeUsersLast24h
           .map(
               (user, index) =>
-                  `${index + 1}. ${escapeMarkdownV2(user.firstName)} (${
+                  `${index + 1}\\. ${escapeMarkdownV2(user.firstName)} (${
                       user.username ? `@${escapeMarkdownV2(user.username)}` : ''
                   }, ID: ${user.userId})`
           )
@@ -216,7 +216,7 @@ bot.action('stats', async (ctx) => {
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
 
-    let messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+    let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
     if (messageId && ctx.message) {
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, statsMessage, {
@@ -447,7 +447,7 @@ bot.action('edit', async (ctx) => {
       ],
     };
 
-    let messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+    let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
     if (messageId && ctx.message) {
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, 'Выберите, что редактировать:', {
@@ -591,7 +591,7 @@ bot.action('about', async (ctx) => {
     ctx.session = ctx.session || {};
 
     const replyMarkup = { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] };
-    let messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+    let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
 
     if (messageId && ctx.message) {
       try {
