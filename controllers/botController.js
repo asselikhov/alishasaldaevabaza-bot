@@ -102,29 +102,21 @@ bot.start(async (ctx) => {
     console.log(`Sending reply to ${userId}`);
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
-    ctx.session.currentMessageId = ctx.message.message_id + 1; // Store message_id of the bot's response
-    if (user.paymentStatus === 'succeeded') {
-      await ctx.replyWithMarkdown(await getPaidWelcomeMessage(), {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '💬 Техподдержка', url: settings.supportLink }],
-            [{ text: '💡 О канале', callback_data: 'about' }],
-          ],
-        },
-      });
-    } else {
-      await ctx.replyWithMarkdown(await getWelcomeMessage(), {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
-              { text: '💬 Техподдержка', url: settings.supportLink },
+    const sentMessage = await ctx.replyWithMarkdown(
+        user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage(),
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+                { text: '💬 Техподдержка', url: settings.supportLink },
+              ],
+              ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
             ],
-            ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
-          ],
-        },
-      });
-    }
+          },
+        }
+    );
+    ctx.session.currentMessageId = sentMessage.message_id;
     console.log(`Reply sent to ${userId}, stored message_id: ${ctx.session.currentMessageId}`);
   } catch (error) {
     console.error(`Error in /start for user ${userId}:`, error.message);
@@ -141,6 +133,7 @@ function escapeMarkdownV2(text) {
 bot.action('admin_panel', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
+  const chatId = String(ctx.chat.id);
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
@@ -148,21 +141,45 @@ bot.action('admin_panel', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('start');
-    ctx.session.currentMessageId = ctx.message.message_id; // Store current message_id
-    await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Редактировать', callback_data: 'edit' }],
-          [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
-          [{ text: 'Статистика', callback_data: 'stats' }],
-          [{ text: '↩️ Назад', callback_data: 'back' }],
-        ],
-      },
-    });
-    console.log(`[ADMIN_PANEL] Updated message_id for user ${userId}: ${ctx.session.currentMessageId}`);
+
+    const replyMarkup = {
+      inline_keyboard: [
+        [{ text: 'Редактировать', callback_data: 'edit' }],
+        [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
+        [{ text: 'Статистика', callback_data: 'stats' }],
+        [{ text: '↩️ Назад', callback_data: 'back' }],
+      ],
+    };
+
+    let messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+    if (messageId && ctx.message) {
+      try {
+        await ctx.telegram.editMessageText(chatId, messageId, undefined, 'Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+          parse_mode: 'Markdown',
+          reply_markup: replyMarkup,
+        });
+        ctx.session.currentMessageId = messageId;
+        console.log(`[ADMIN_PANEL] Edited message ${messageId} for user ${userId}`);
+      } catch (editError) {
+        console.warn(`[ADMIN_PANEL] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
+        const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+          parse_mode: 'Markdown',
+          reply_markup: replyMarkup,
+        });
+        ctx.session.currentMessageId = sentMessage.message_id;
+        console.log(`[ADMIN_PANEL] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
+      }
+    } else {
+      console.warn(`[ADMIN_PANEL] No valid message_id for user ${userId}, sending new message`);
+      const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
+        parse_mode: 'Markdown',
+        reply_markup: replyMarkup,
+      });
+      ctx.session.currentMessageId = sentMessage.message_id;
+      console.log(`[ADMIN_PANEL] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
+    }
   } catch (error) {
-    console.error(`Error in admin panel for user ${userId}:`, error.message);
+    console.error(`Error in admin panel for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при открытии админ-панели.');
   }
 });
@@ -170,6 +187,7 @@ bot.action('admin_panel', async (ctx) => {
 bot.action('stats', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
+  const chatId = String(ctx.chat.id);
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
@@ -197,12 +215,34 @@ bot.action('stats', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
-    ctx.session.currentMessageId = ctx.message.message_id; // Store current message_id
-    await ctx.editMessageText(statsMessage, {
-      parse_mode: 'MarkdownV2',
-      reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
-    });
-    console.log(`[STATS] Updated message_id for user ${userId}: ${ctx.session.currentMessageId}`);
+
+    let messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+    if (messageId && ctx.message) {
+      try {
+        await ctx.telegram.editMessageText(chatId, messageId, undefined, statsMessage, {
+          parse_mode: 'MarkdownV2',
+          reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
+        });
+        ctx.session.currentMessageId = messageId;
+        console.log(`[STATS] Edited message ${messageId} for user ${userId}`);
+      } catch (editError) {
+        console.warn(`[STATS] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
+        const sentMessage = await ctx.reply(statsMessage, {
+          parse_mode: 'MarkdownV2',
+          reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
+        });
+        ctx.session.currentMessageId = sentMessage.message_id;
+        console.log(`[STATS] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
+      }
+    } else {
+      console.warn(`[STATS] No valid message_id for user ${userId}, sending new message`);
+      const sentMessage = await ctx.reply(statsMessage, {
+        parse_mode: 'MarkdownV2',
+        reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
+      });
+      ctx.session.currentMessageId = sentMessage.message_id;
+      console.log(`[STATS] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
+    }
   } catch (error) {
     console.error(`Error in stats for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
@@ -318,6 +358,7 @@ bot.action('back', async (ctx) => {
         console.warn(`[BACK] No message_id available for user ${userId}, sending new message`);
         const sentMessage = await ctx.replyWithMarkdown(newText, { reply_markup: replyMarkup });
         ctx.session.currentMessageId = sentMessage.message_id;
+        console.log(`[BACK] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
         return;
       }
 
@@ -329,55 +370,52 @@ bot.action('back', async (ctx) => {
         console.log(`[BACK] Edited message ${messageId} for user ${userId}`);
       } catch (editError) {
         console.warn(`[BACK] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
+        if (editError.message.includes('message can\'t be edited')) {
+          ctx.session.currentMessageId = null;
+        }
         const sentMessage = await ctx.replyWithMarkdown(newText, { reply_markup: replyMarkup });
         ctx.session.currentMessageId = sentMessage.message_id;
+        console.log(`[BACK] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
       }
     } else if (lastAction === 'admin_panel') {
       const messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+      const replyMarkup = {
+        inline_keyboard: [
+          [{ text: 'Редактировать', callback_data: 'edit' }],
+          [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
+          [{ text: 'Статистика', callback_data: 'stats' }],
+          [{ text: '↩️ Назад', callback_data: 'back' }],
+        ],
+      };
+
       if (!messageId) {
         console.warn(`[BACK] No message_id available for user ${userId}, sending new message`);
         const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
           parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: 'Редактировать', callback_data: 'edit' }],
-              [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
-              [{ text: 'Статистика', callback_data: 'stats' }],
-              [{ text: '↩️ Назад', callback_data: 'back' }],
-            ],
-          },
+          reply_markup: replyMarkup,
         });
         ctx.session.currentMessageId = sentMessage.message_id;
+        console.log(`[BACK] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
         return;
       }
 
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, 'Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
           parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: 'Редактировать', callback_data: 'edit' }],
-              [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
-              [{ text: 'Статистика', callback_data: 'stats' }],
-              [{ text: '↩️ Назад', callback_data: 'back' }],
-            ],
-          },
+          reply_markup: replyMarkup,
         });
         console.log(`[BACK] Edited message ${messageId} for user ${userId}`);
       } catch (editError) {
         console.warn(`[BACK] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
+        if (editError.message.includes('message can\'t be edited')) {
+          ctx.session.currentMessageId = null;
+        }
         const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
           parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: 'Редактировать', callback_data: 'edit' }],
-              [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
-              [{ text: 'Статистика', callback_data: 'stats' }],
-              [{ text: '↩️ Назад', callback_data: 'back' }],
-            ],
-          },
+          reply_markup: replyMarkup,
         });
         ctx.session.currentMessageId = sentMessage.message_id;
+        console.log(`[BACK] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
       }
     }
   } catch (error) {
@@ -389,6 +427,7 @@ bot.action('back', async (ctx) => {
 bot.action('edit', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
+  const chatId = String(ctx.chat.id);
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
@@ -396,21 +435,45 @@ bot.action('edit', async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
-    ctx.session.currentMessageId = ctx.message.message_id; // Store current message_id
-    await ctx.editMessageText('Выберите, что редактировать:', {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'О канале', callback_data: 'edit_channel' }],
-          [{ text: 'Техподдержка', callback_data: 'edit_support' }],
-          [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
-          [{ text: 'Сумма оплаты', callback_data: 'edit_payment_amount' }],
-          [{ text: 'Приветствие после оплаты', callback_data: 'edit_paid_welcome' }],
-          [{ text: '↩️ Назад', callback_data: 'back' }],
-        ],
-      },
-    });
-    console.log(`[EDIT] Updated message_id for user ${userId}: ${ctx.session.currentMessageId}`);
+
+    const replyMarkup = {
+      inline_keyboard: [
+        [{ text: 'О канале', callback_data: 'edit_channel' }],
+        [{ text: 'Техподдержка', callback_data: 'edit_support' }],
+        [{ text: 'Приветствие', callback_data: 'edit_welcome' }],
+        [{ text: 'Сумма оплаты', callback_data: 'edit_payment_amount' }],
+        [{ text: 'Приветствие после оплаты', callback_data: 'edit_paid_welcome' }],
+        [{ text: '↩️ Назад', callback_data: 'back' }],
+      ],
+    };
+
+    let messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+    if (messageId && ctx.message) {
+      try {
+        await ctx.telegram.editMessageText(chatId, messageId, undefined, 'Выберите, что редактировать:', {
+          parse_mode: 'Markdown',
+          reply_markup: replyMarkup,
+        });
+        ctx.session.currentMessageId = messageId;
+        console.log(`[EDIT] Edited message ${messageId} for user ${userId}`);
+      } catch (editError) {
+        console.warn(`[EDIT] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
+        const sentMessage = await ctx.reply('Выберите, что редактировать:', {
+          parse_mode: 'Markdown',
+          reply_markup: replyMarkup,
+        });
+        ctx.session.currentMessageId = sentMessage.message_id;
+        console.log(`[EDIT] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
+      }
+    } else {
+      console.warn(`[EDIT] No valid message_id for user ${userId}, sending new message`);
+      const sentMessage = await ctx.reply('Выберите, что редактировать:', {
+        parse_mode: 'Markdown',
+        reply_markup: replyMarkup,
+      });
+      ctx.session.currentMessageId = sentMessage.message_id;
+      console.log(`[EDIT] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
+    }
   } catch (error) {
     console.error(`Error in edit for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при выборе редактирования.');
@@ -521,23 +584,34 @@ bot.action('buy', async (ctx) => {
 bot.action('about', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
+  const chatId = String(ctx.chat.id);
   try {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const settings = await getSettings();
     ctx.session = ctx.session || {};
-    ctx.session.currentMessageId = ctx.message.message_id; // Store current message_id
-    try {
-      await ctx.editMessageText(settings.channelDescription, {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
-      });
-      console.log(`[ABOUT] Updated message_id for user ${userId}: ${ctx.session.currentMessageId}`);
-    } catch (editError) {
-      console.warn(`Failed to edit message for user ${userId}:`, editError.message);
-      const sentMessage = await ctx.replyWithMarkdown(settings.channelDescription, {
-        reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
-      });
+
+    const replyMarkup = { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] };
+    let messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+
+    if (messageId && ctx.message) {
+      try {
+        await ctx.telegram.editMessageText(chatId, messageId, undefined, settings.channelDescription, {
+          parse_mode: 'Markdown',
+          reply_markup: replyMarkup,
+        });
+        ctx.session.currentMessageId = messageId;
+        console.log(`[ABOUT] Edited message ${messageId} for user ${userId}`);
+      } catch (editError) {
+        console.warn(`[ABOUT] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
+        const sentMessage = await ctx.replyWithMarkdown(settings.channelDescription, { reply_markup: replyMarkup });
+        ctx.session.currentMessageId = sentMessage.message_id;
+        console.log(`[ABOUT] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
+      }
+    } else {
+      console.warn(`[ABOUT] No valid message_id for user ${userId}, sending new message`);
+      const sentMessage = await ctx.replyWithMarkdown(settings.channelDescription, { reply_markup: replyMarkup });
       ctx.session.currentMessageId = sentMessage.message_id;
+      console.log(`[ABOUT] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
     }
   } catch (error) {
     console.error(`Error in about for user ${userId}:`, error.stack);
