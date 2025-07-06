@@ -74,9 +74,7 @@ bot.command('checkpayment', async (ctx) => {
       return;
     }
 
-    const paymentក
-
-    System: payment = await getPayment(user.paymentId);
+    const payment = await getPayment(user.paymentId);
     if (payment.status === 'succeeded') await sendInviteLink(user, ctx, user.paymentId);
     else await ctx.reply(`Статус вашего платежа: ${payment.status}. Пожалуйста, завершите оплату или свяжитесь с поддержкой.`, {
       reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
