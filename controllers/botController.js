@@ -1,34 +1,12 @@
 const { bot, sendInviteLink, getSettings, getWelcomeMessage, getPaidWelcomeMessage, resetSettingsCache } = require('../services/telegram');
-const { session } = require('@telegraf/session');
-const Redis = require('redis');
+const { session } = require('telegraf');
 const escape = require('markdown-escape');
 const { createPayment, getPayment } = require('../services/yookassa');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
 
-// Настройка Redis клиента
-const redisClient = Redis.createClient({
-  url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
-});
-
-// Подключение к Redis
-redisClient.connect().catch(err => console.error('Redis connection error:', err));
-
-// Настройка сессий с Redis
-bot.use(session({
-  store: {
-    get: async (key) => {
-      const data = await redisClient.get(key);
-      return data ? JSON.parse(data) : null;
-    },
-    set: async (key, value) => {
-      await redisClient.set(key, JSON.stringify(value), { EX: 24 * 60 * 60 }); // Хранить 24 часа
-    },
-    delete: async (key) => {
-      await redisClient.del(key);
-    },
-  },
-}));
+// Настройка локального хранилища сессий
+bot.use(session());
 
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 
