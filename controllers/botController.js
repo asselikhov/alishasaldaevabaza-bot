@@ -144,7 +144,7 @@ function escapeMarkdownV2(text) {
 }
 
 async function generateActivityChart(dailyActivity) {
-  const canvas = createCanvas(1000, 500);
+  const canvas = createCanvas(1100, 600); // Увеличен размер для премиального вида
   const ctx = canvas.getContext('2d');
 
   const labels = dailyActivity.map(entry => {
@@ -153,17 +153,19 @@ async function generateActivityChart(dailyActivity) {
   });
   const data = dailyActivity.map(entry => entry.count);
 
-  // Градиентный фон для холста
-  const bgGradient = ctx.createLinearGradient(0, 0, 0, 500);
-  bgGradient.addColorStop(0, '#F5F7FA'); // Светло-серый
-  bgGradient.addColorStop(1, '#E0EAF2'); // Ещё более светлый
+  // Голографический градиент для фона
+  const bgGradient = ctx.createLinearGradient(0, 0, 0, 600);
+  bgGradient.addColorStop(0, '#1A1A2E'); // Тёмный фиолетовый
+  bgGradient.addColorStop(0.5, '#16213E'); // Глубокий синий
+  bgGradient.addColorStop(1, '#1A1A2E');
   ctx.fillStyle = bgGradient;
-  ctx.fillRect(0, 0, 1000, 500);
+  ctx.fillRect(0, 0, 1100, 600);
 
-  // Градиент для столбцов
-  const barGradient = ctx.createLinearGradient(0, 500, 0, 0);
-  barGradient.addColorStop(0, '#3498DB'); // Синий
-  barGradient.addColorStop(1, '#F1C40F'); // Золотой
+  // Неоновый градиент для столбцов
+  const barGradient = ctx.createLinearGradient(0, 600, 0, 0);
+  barGradient.addColorStop(0, '#00DDEB'); // Неоново-голубой
+  barGradient.addColorStop(0.5, '#8A2BE2'); // Неоновый фиолетовый
+  barGradient.addColorStop(1, '#00DDEB');
 
   new Chart(ctx, {
     type: 'bar',
@@ -173,89 +175,89 @@ async function generateActivityChart(dailyActivity) {
         label: 'Активные пользователи',
         data: data,
         backgroundColor: barGradient,
-        borderColor: '#2980B9', // Тёмно-синяя граница
-        borderWidth: 1,
-        borderRadius: 8, // Закруглённые углы
-        barThickness: 30, // Ширина столбцов
-        shadowOffsetX: 2, // Лёгкая тень для 3D-эффекта
-        shadowOffsetY: 2,
-        shadowBlur: 10,
-        shadowColor: 'rgba(0, 0, 0, 0.2)',
+        borderColor: '#00FFCC', // Неоновая обводка
+        borderWidth: 2,
+        borderRadius: 10,
+        barThickness: 35,
+        shadowOffsetX: 3,
+        shadowOffsetY: 3,
+        shadowBlur: 15,
+        shadowColor: 'rgba(0, 255, 204, 0.5)', // Неоновая тень
       }],
     },
     options: {
       responsive: true,
       animation: {
-        duration: 1000,
-        easing: 'easeOutQuad',
+        duration: 1200,
+        easing: 'easeOutBack',
       },
       plugins: {
         legend: {
           display: true,
           position: 'top',
           labels: {
-            font: { size: 16, family: 'Roboto', weight: 'bold' },
-            color: '#34495E',
-            boxWidth: 20,
-            padding: 20,
+            font: { size: 18, family: 'Montserrat', weight: 'bold', style: 'italic' },
+            color: '#00FFCC',
+            boxWidth: 25,
+            padding: 25,
           },
         },
         title: {
           display: true,
-          text: 'Активность пользователей за Июль 2025',
-          font: { size: 22, family: 'Roboto', weight: 'bold' },
-          color: '#2C3E50',
-          padding: 15,
+          text: 'Аналитика активности | Июль 2025',
+          font: { size: 28, family: 'Montserrat', weight: 'bold', style: 'italic' },
+          color: '#00DDEB',
+          padding: 20,
         },
         datalabels: {
           display: true,
           color: '#FFFFFF',
-          font: { size: 14, family: 'Roboto', weight: 'bold' },
+          font: { size: 16, family: 'Montserrat', weight: 'bold' },
           anchor: 'end',
           align: 'top',
           formatter: (value) => value || 0,
-          backgroundColor: 'rgba(52, 152, 219, 0.8)', // Полупрозрачный синий фон
-          borderRadius: 6,
-          padding: 4,
-          borderWidth: 1,
-          borderColor: '#2980B9',
+          backgroundColor: 'rgba(138, 43, 226, 0.9)', // Полупрозрачный фиолетовый
+          borderRadius: 8,
+          padding: 6,
+          borderWidth: 2,
+          borderColor: '#8A2BE2',
         },
       },
       scales: {
         x: {
           title: {
             display: true,
-            text: 'Дата',
-            font: { size: 16, family: 'Roboto', weight: 'bold' },
-            color: '#34495E',
+            text: 'Даты',
+            font: { size: 18, family: 'Montserrat', weight: 'bold', style: 'italic' },
+            color: '#00FFCC',
           },
           ticks: {
-            color: '#34495E',
-            font: { size: 14, family: 'Roboto' },
+            color: '#00FFCC',
+            font: { size: 16, family: 'Montserrat' },
           },
           grid: {
-            color: 'rgba(52, 73, 94, 0.1)',
-            borderColor: 'rgba(52, 73, 94, 0.2)',
+            color: 'rgba(0, 255, 204, 0.1)',
+            borderColor: 'rgba(0, 255, 204, 0.3)',
           },
         },
         y: {
           title: {
             display: true,
-            text: 'Количество пользователей',
-            font: { size: 16, family: 'Roboto', weight: 'bold' },
-            color: '#34495E',
+            text: 'Пользователи',
+            font: { size: 18, family: 'Montserrat', weight: 'bold', style: 'italic' },
+            color: '#00FFCC',
           },
           ticks: {
-            color: '#34495E',
-            font: { size: 14, family: 'Roboto' },
+            color: '#00FFCC',
+            font: { size: 16, family: 'Montserrat' },
             beginAtZero: true,
             stepSize: 1,
             precision: 0,
             callback: (value) => Number.isInteger(value) ? value : null,
           },
           grid: {
-            color: 'rgba(52, 73, 94, 0.1)',
-            borderColor: 'rgba(52, 73, 94, 0.2)',
+            color: 'rgba(0, 255, 204, 0.1)',
+            borderColor: 'rgba(0, 255, 204, 0.3)',
           },
           min: 0,
           max: Math.max(...data, 10) + 5,
@@ -872,4 +874,4 @@ bot.on('text', async (ctx) => {
   }
 });
 
-module.exports = { processPayment };
+module.exports = { processPayment};
