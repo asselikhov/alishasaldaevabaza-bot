@@ -144,7 +144,7 @@ function escapeMarkdownV2(text) {
 }
 
 async function generateActivityChart(dailyActivity) {
-  const canvas = createCanvas(1100, 600); // Увеличен размер для премиального вида
+  const canvas = createCanvas(1000, 500);
   const ctx = canvas.getContext('2d');
 
   const labels = dailyActivity.map(entry => {
@@ -153,111 +153,93 @@ async function generateActivityChart(dailyActivity) {
   });
   const data = dailyActivity.map(entry => entry.count);
 
-  // Голографический градиент для фона
-  const bgGradient = ctx.createLinearGradient(0, 0, 0, 600);
-  bgGradient.addColorStop(0, '#1A1A2E'); // Тёмный фиолетовый
-  bgGradient.addColorStop(0.5, '#16213E'); // Глубокий синий
-  bgGradient.addColorStop(1, '#1A1A2E');
-  ctx.fillStyle = bgGradient;
-  ctx.fillRect(0, 0, 1100, 600);
-
-  // Неоновый градиент для столбцов
-  const barGradient = ctx.createLinearGradient(0, 600, 0, 0);
-  barGradient.addColorStop(0, '#00DDEB'); // Неоново-голубой
-  barGradient.addColorStop(0.5, '#8A2BE2'); // Неоновый фиолетовый
-  barGradient.addColorStop(1, '#00DDEB');
+  // Устанавливаем тёмный фон
+  ctx.fillStyle = '#1E1E1E';
+  ctx.fillRect(0, 0, 1000, 500);
 
   new Chart(ctx, {
-    type: 'bar',
+    type: 'line', // Линейный график для профессионального вида
     data: {
       labels: labels,
       datasets: [{
         label: 'Активные пользователи',
         data: data,
-        backgroundColor: barGradient,
-        borderColor: '#00FFCC', // Неоновая обводка
+        borderColor: '#00A2E8', // Яркий синий для линии
         borderWidth: 2,
-        borderRadius: 10,
-        barThickness: 35,
-        shadowOffsetX: 3,
-        shadowOffsetY: 3,
-        shadowBlur: 15,
-        shadowColor: 'rgba(0, 255, 204, 0.5)', // Неоновая тень
+        pointBackgroundColor: '#00A2E8',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: false, // Без заливки для чистоты
       }],
     },
     options: {
       responsive: true,
-      animation: {
-        duration: 1200,
-        easing: 'easeOutBack',
-      },
+      animation: false, // Отключаем анимацию для строгого вида
       plugins: {
         legend: {
           display: true,
           position: 'top',
           labels: {
-            font: { size: 18, family: 'Montserrat', weight: 'bold', style: 'italic' },
-            color: '#00FFCC',
-            boxWidth: 25,
-            padding: 25,
+            font: { size: 14, family: 'Arial' },
+            color: '#FFFFFF',
+            boxWidth: 15,
+            padding: 10,
           },
         },
         title: {
           display: true,
-          text: 'Аналитика активности | Июль 2025',
-          font: { size: 28, family: 'Montserrat', weight: 'bold', style: 'italic' },
-          color: '#00DDEB',
-          padding: 20,
+          text: 'Активность пользователей за Июль 2025',
+          font: { size: 18, family: 'Arial', weight: 'bold' },
+          color: '#FFFFFF',
+          padding: 10,
         },
         datalabels: {
           display: true,
           color: '#FFFFFF',
-          font: { size: 16, family: 'Montserrat', weight: 'bold' },
+          font: { size: 12, family: 'Arial' },
           anchor: 'end',
           align: 'top',
           formatter: (value) => value || 0,
-          backgroundColor: 'rgba(138, 43, 226, 0.9)', // Полупрозрачный фиолетовый
-          borderRadius: 8,
-          padding: 6,
-          borderWidth: 2,
-          borderColor: '#8A2BE2',
+          backgroundColor: 'rgba(0, 162, 232, 0.7)', // Полупрозрачный синий
+          borderRadius: 4,
+          padding: 2,
         },
       },
       scales: {
         x: {
           title: {
             display: true,
-            text: 'Даты',
-            font: { size: 18, family: 'Montserrat', weight: 'bold', style: 'italic' },
-            color: '#00FFCC',
+            text: 'Дата',
+            font: { size: 14, family: 'Arial', weight: 'bold' },
+            color: '#FFFFFF',
           },
           ticks: {
-            color: '#00FFCC',
-            font: { size: 16, family: 'Montserrat' },
+            color: '#FFFFFF',
+            font: { size: 12, family: 'Arial' },
           },
           grid: {
-            color: 'rgba(0, 255, 204, 0.1)',
-            borderColor: 'rgba(0, 255, 204, 0.3)',
+            color: 'rgba(255, 255, 255, 0.1)', // Тонкая белая сетка
+            borderColor: 'rgba(255, 255, 255, 0.3)',
           },
         },
         y: {
           title: {
             display: true,
-            text: 'Пользователи',
-            font: { size: 18, family: 'Montserrat', weight: 'bold', style: 'italic' },
-            color: '#00FFCC',
+            text: 'Количество пользователей',
+            font: { size: 14, family: 'Arial', weight: 'bold' },
+            color: '#FFFFFF',
           },
           ticks: {
-            color: '#00FFCC',
-            font: { size: 16, family: 'Montserrat' },
+            color: '#FFFFFF',
+            font: { size: 12, family: 'Arial' },
             beginAtZero: true,
             stepSize: 1,
             precision: 0,
             callback: (value) => Number.isInteger(value) ? value : null,
           },
           grid: {
-            color: 'rgba(0, 255, 204, 0.1)',
-            borderColor: 'rgba(0, 255, 204, 0.3)',
+            color: 'rgba(255, 255, 255, 0.1)',
+            borderColor: 'rgba(255, 255, 255, 0.3)',
           },
           min: 0,
           max: Math.max(...data, 10) + 5,
@@ -443,8 +425,8 @@ bot.action('export_subscribers', async (ctx) => {
       { header: 'ID Платежа', key: 'paymentId', width: 30 },
       { header: 'Локальный ID Платежа', key: 'localPaymentId', width: 30 },
       { header: 'Вступил в Канал', key: 'joinedChannel', width: 15 },
-      { header: 'Ссылка Приглашения', key: 'inviteLink', width: 40 },
-      { header: 'Срок Ссылки', key: 'inviteLinkExpires', width: 15 },
+      { header: 'Ссылка Приглашения', key: 'InviteLink', width: 40 },
+      { header: 'Срок Ссылки', key: 'InviteLinkExpires', width: 15 },
       { header: 'Имя', key: 'firstName', width: 20 },
       { header: 'Username', key: 'username', width: 20 },
       { header: 'Телефон', key: 'phoneNumber', width: 15 },
