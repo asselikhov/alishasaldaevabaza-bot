@@ -210,7 +210,7 @@ bot.action('stats', async (ctx) => {
           .join('\n');
     }
 
-    const statsMessage = `📊 Статистика:\\n➖➖➖➖➖➖➖➖➖➖➖➖➖\\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\\n\\nПосетители за последние 24 часа:\\n${activeUsersList}`;
+    const statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
 
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
