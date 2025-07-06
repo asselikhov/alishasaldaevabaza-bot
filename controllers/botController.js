@@ -3,6 +3,8 @@ const escape = require('markdown-escape');
 const { createPayment, getPayment } = require('../services/yookassa');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
+const { createCanvas } = require('canvas');
+const Chart = require('chart.js/auto');
 
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 
@@ -141,6 +143,77 @@ function escapeMarkdownV2(text) {
   return text.replace(/([_*[\]()~`>#+\-=|{}\.!\\])/g, '\\$1');
 }
 
+async function generateActivityChart(dailyActivity) {
+  const canvas = createCanvas(800, 400);
+  const ctx = canvas.getContext('2d');
+
+  const labels = dailyActivity.map(entry => entry.date);
+  const data = dailyActivity.map(entry => entry.count);
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Активные пользователи по дням',
+        data: data,
+        borderColor: '#1E90FF',
+        backgroundColor: 'rgba(30, 144, 255, 0.2)',
+        fill: true,
+        tension: 0.4,
+        pointBackgroundColor: '#1E90FF',
+        pointBorderColor: '#fff',
+        pointRadius: 5,
+        pointHoverRadius: 8,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            font: { size: 14, family: 'Arial' },
+            color: '#333',
+          },
+        },
+        title: {
+          display: true,
+          text: 'Посещаемость за последние 7 дней',
+          font: { size: 18, family: 'Arial', weight: 'bold' },
+          color: '#333',
+          padding: 20,
+        },
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Дата',
+            font: { size: 14, family: 'Arial' },
+            color: '#333',
+          },
+          ticks: { color: '#333', font: { size: 12 } },
+          grid: { display: false },
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Количество пользователей',
+            font: { size: 14, family: 'Arial' },
+            color: '#333',
+          },
+          ticks: { color: '#333', font: { size: 12 }, beginAtZero: true },
+          grid: { color: 'rgba(0, 0, 0, 0.1)' },
+        },
+      },
+    },
+  });
+
+  return canvas.toBuffer('image/png');
+}
+
 bot.action('admin_panel', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
@@ -205,6 +278,8 @@ bot.action('stats', async (ctx) => {
   try {
     console.log(`[STATS] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
+
+    // Собираем текстовую статистику
     const totalUsers = await User.countDocuments();
     const paidUsers = await User.countDocuments({ paymentStatus: 'succeeded' });
     const activeUsersLast24h = await User.find({
@@ -221,42 +296,70 @@ bot.action('stats', async (ctx) => {
           .join('\n');
     }
 
-    // Экранируем только те части, которые содержат специальные символы
-    const statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
+    let statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
+
+    // Проверяем длину сообщения и обрезаем, если оно превышает 1024 символа
+    if (statsMessage.length > 1024) {
+      const maxListLength = 1024 - statsMessage.length + activeUsersList.length - 50; // 50 символов на "...и другие"
+      activeUsersList = activeUsersList.substring(0, maxListLength) + '\n...и другие';
+      statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
+    }
 
     console.log(`[STATS] Generated statsMessage for user ${userId}: ${statsMessage}`);
+
+    // Собираем данные для графика (последние 7 дней)
+    const days = 7;
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
+    startDate.setHours(0, 0, 0, 0);
+
+    const dailyActivity = await User.aggregate([
+      {
+        $match: {
+          lastActivity: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$lastActivity', timezone: 'Europe/Moscow' },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { '_id': 1 },
+      },
+    ]);
+
+    // Формируем полный список дат для графика, включая дни без активности
+    const dateArray = [];
+    for (let i = 0; i < days; i++) {
+      const date = new Date(startDate.getTime() + (i * 24 * 60 * 60 * 1000));
+      const dateStr = date.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).split('.').reverse().join('-');
+      const found = dailyActivity.find(d => d._id === dateStr);
+      dateArray.push({ date: dateStr, count: found ? found.count : 0 });
+    }
+
+    // Генерируем график
+    const chartBuffer = await generateActivityChart(dateArray);
 
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
 
-    let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
-    if (messageId) {
-      try {
-        await ctx.telegram.editMessageText(chatId, messageId, undefined, statsMessage, {
+    // Отправляем график с текстовой статистикой в подписи
+    const sentMessage = await ctx.replyWithPhoto(
+        { source: chartBuffer },
+        {
+          caption: statsMessage,
           parse_mode: 'MarkdownV2',
           reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
-        });
-        ctx.session.currentMessageId = messageId;
-        console.log(`[STATS] Edited message ${messageId} for user ${userId}`);
-      } catch (editError) {
-        console.warn(`[STATS] Failed to edit message ${messageId} for user ${userId}:`, editError.message);
-        const sentMessage = await ctx.reply(statsMessage, {
-          parse_mode: 'MarkdownV2',
-          reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
-        });
-        ctx.session.currentMessageId = sentMessage.message_id;
-        console.log(`[STATS] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
-      }
-    } else {
-      console.warn(`[STATS] No valid message_id for user ${userId}, sending new message`);
-      const sentMessage = await ctx.reply(statsMessage, {
-        parse_mode: 'MarkdownV2',
-        reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
-      });
-      ctx.session.currentMessageId = sentMessage.message_id;
-      console.log(`[STATS] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
-    }
+        }
+    );
+    ctx.session.currentMessageId = sentMessage.message_id;
+    console.log(`[STATS] Sent photo with stats caption, message_id: ${ctx.session.currentMessageId} for user ${userId}`);
   } catch (error) {
     console.error(`[STATS] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
