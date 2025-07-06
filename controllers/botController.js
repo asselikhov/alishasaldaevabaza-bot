@@ -1,3 +1,4 @@
+```javascript
 const { bot, sendInviteLink, getSettings, getWelcomeMessage, getPaidWelcomeMessage, resetSettingsCache } = require('../services/telegram');
 const escape = require('markdown-escape');
 const { createPayment, getPayment } = require('../services/yookassa');
