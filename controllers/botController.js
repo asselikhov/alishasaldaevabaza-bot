@@ -80,7 +80,7 @@ bot.command('checkpayment', async (ctx) => {
   } catch (error) {
     console.error(`[CHECKPAYMENT] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при проверке статуса платежа. Попробуйте позже или свяжитесь с поддержкой.', {
-      reply_markup: { inline_keyboard [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
+      reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
     });
   }
 });
