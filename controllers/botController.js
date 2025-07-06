@@ -11,7 +11,8 @@ const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id =>
 
 async function processPayment(ctx, userId, chatId) {
   try {
-    console.log(`[PAYMENT] Processing payment for user ${userId}, YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
+    // Временный комментарий для отладки: проверьте, что переменные окружения настроены
+    // console.log(`[PAYMENT] Processing payment for user ${userId}, YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID || 'not set'}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'not set'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
       return ctx.reply('Вы уже оплатили доступ! Вот ваша одноразовая ссылка:', {
@@ -22,7 +23,6 @@ async function processPayment(ctx, userId, chatId) {
 
     const settings = await getSettings();
     const localPaymentId = require('uuid').v4();
-    console.log(`[PAYMENT] Creating payment for user ${userId}, localPaymentId: ${localPaymentId}`);
     const payment = await Promise.race([
       createPayment({
         amount: settings.paymentAmount,
@@ -36,7 +36,6 @@ async function processPayment(ctx, userId, chatId) {
     ]);
 
     await User.updateOne({ userId }, { paymentId: payment.id, localPaymentId, paymentStatus: 'pending', chatId, lastActivity: new Date() }, { upsert: true });
-    console.log(`[PAYMENT] Saved paymentId ${payment.id} for user ${userId}`);
 
     await ctx.reply('Перейдите по ссылке для оплаты:', {
       parse_mode: 'Markdown',
