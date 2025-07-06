@@ -80,7 +80,7 @@ bot.command('checkpayment', async (ctx) => {
   } catch (error) {
     console.error(`[CHECKPAYMENT] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при проверке статуса платежа. Попробуйте позже или свяжитесь с поддержкой.', {
-      reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
+      reply_markup: { inline_keyboard [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
     });
   }
 });
@@ -106,8 +106,8 @@ bot.start(async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     const inlineKeyboard = [
-      user.paymentStatus === 'succeeded' ? [] : [
-        { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+      [
+        ...(user.paymentStatus === 'succeeded' ? [] : [{ text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' }]),
         { text: '💬 Техподдержка', url: settings.supportLink },
       ],
       ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
@@ -175,7 +175,7 @@ bot.action('admin_panel', async (ctx) => {
       }
     } else {
       console.warn(`[ADMIN_PANEL] No valid message_id for user ${userId}, sending new message`);
-      const sentMessage = await ctx.reply('Админка:\n➖➖➖�                                                     ➖➖➖➖➖➖➖', {
+      const sentMessage = await ctx.reply('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
         parse_mode: 'Markdown',
         reply_markup: replyMarkup,
       });
@@ -348,8 +348,8 @@ bot.action('back', async (ctx) => {
       const settings = await getSettings();
       const user = await User.findOne({ userId });
       const inlineKeyboard = [
-        user.paymentStatus === 'succeeded' ? [] : [
-          { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+        [
+          ...(user.paymentStatus === 'succeeded' ? [] : [{ text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' }]),
           { text: '💬 Техподдержка', url: settings.supportLink },
         ],
         ...(adminIds.has(userId)
