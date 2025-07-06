@@ -147,24 +147,22 @@ async function generateActivityChart(dailyActivity) {
   const canvas = createCanvas(800, 400);
   const ctx = canvas.getContext('2d');
 
-  const labels = dailyActivity.map(entry => entry.date);
+  const labels = dailyActivity.map(entry => {
+    const [year, month, day] = entry.date.split('-');
+    return `${day}.${month}`;
+  });
   const data = dailyActivity.map(entry => entry.count);
 
   new Chart(ctx, {
-    type: 'line',
+    type: 'bar', // Изменено на столбчатый график для лучшей видимости изменений
     data: {
       labels: labels,
       datasets: [{
-        label: 'Активные пользователи по дням',
+        label: 'Активные пользователи',
         data: data,
+        backgroundColor: 'rgba(30, 144, 255, 0.8)', // Яркий синий для столбцов
         borderColor: '#1E90FF',
-        backgroundColor: 'rgba(30, 144, 255, 0.2)',
-        fill: true,
-        tension: 0.4,
-        pointBackgroundColor: '#1E90FF',
-        pointBorderColor: '#fff',
-        pointRadius: 5,
-        pointHoverRadius: 8,
+        borderWidth: 1,
       }],
     },
     options: {
@@ -174,16 +172,24 @@ async function generateActivityChart(dailyActivity) {
           display: true,
           position: 'top',
           labels: {
-            font: { size: 14, family: 'Arial' },
+            font: { size: 16, family: 'Arial', weight: 'bold' },
             color: '#333',
           },
         },
         title: {
           display: true,
           text: 'Посещаемость за последние 7 дней',
-          font: { size: 18, family: 'Arial', weight: 'bold' },
+          font: { size: 20, family: 'Arial', weight: 'bold' },
           color: '#333',
           padding: 20,
+        },
+        datalabels: { // Добавляем подписи над столбцами
+          display: true,
+          color: '#333',
+          font: { size: 14, weight: 'bold' },
+          anchor: 'end',
+          align: 'top',
+          formatter: (value) => value, // Показываем само значение
         },
       },
       scales: {
@@ -191,24 +197,36 @@ async function generateActivityChart(dailyActivity) {
           title: {
             display: true,
             text: 'Дата',
-            font: { size: 14, family: 'Arial' },
+            font: { size: 16, family: 'Arial', weight: 'bold' },
             color: '#333',
           },
-          ticks: { color: '#333', font: { size: 12 } },
+          ticks: {
+            color: '#333',
+            font: { size: 14 },
+          },
           grid: { display: false },
         },
         y: {
           title: {
             display: true,
             text: 'Количество пользователей',
-            font: { size: 14, family: 'Arial' },
+            font: { size: 16, family: 'Arial', weight: 'bold' },
             color: '#333',
           },
-          ticks: { color: '#333', font: { size: 12 }, beginAtZero: true },
+          ticks: {
+            color: '#333',
+            font: { size: 14 },
+            beginAtZero: true, // Начинаем с 0
+            stepSize: 1, // Шаг делений — целые числа
+            precision: 0, // Только целые числа
+            callback: (value) => Number.isInteger(value) ? value : null, // Убираем дробные числа
+          },
           grid: { color: 'rgba(0, 0, 0, 0.1)' },
+          min: 0, // Минимальное значение — 0
         },
       },
     },
+    plugins: [require('chartjs-plugin-datalabels')], // Подключаем плагин для подписей
   });
 
   return canvas.toBuffer('image/png');
@@ -300,7 +318,7 @@ bot.action('stats', async (ctx) => {
 
     // Проверяем длину сообщения и обрезаем, если оно превышает 1024 символа
     if (statsMessage.length > 1024) {
-      const maxListLength = 1024 - statsMessage.length + activeUsersList.length - 50; // 50 символов на "...и другие"
+      const maxListLength = 1024 - statsMessage.length + activeUsersList.length - 50;
       activeUsersList = activeUsersList.substring(0, maxListLength) + '\n...и другие';
       statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
     }
