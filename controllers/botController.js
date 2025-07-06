@@ -5,7 +5,8 @@ const User = require('../models/User');
 const Settings = require('../models/Settings');
 const { createCanvas } = require('canvas');
 const Chart = require('chart.js/auto');
-const { ChartAnnotation } = require('chartjs-plugin-annotation');
+const ChartDataLabels = require('chartjs-plugin-datalabels');
+const { AnnotationPlugin } = require('chartjs-plugin-annotation');
 
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 
@@ -160,6 +161,8 @@ async function generateActivityChart(dailyActivity) {
     });
     const data = dailyActivity.map(entry => entry.count);
 
+    console.log(`[GENERATE_ACTIVITY_CHART] Labels: ${JSON.stringify(labels)}, Data: ${JSON.stringify(data)}`);
+
     const maxActivity = Math.max(...data);
     const maxIndex = data.indexOf(maxActivity);
     const maxDate = labels[maxIndex];
@@ -169,6 +172,9 @@ async function generateActivityChart(dailyActivity) {
     gradient.addColorStop(1, '#2D2D2D');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 800, 400);
+
+    // Регистрация плагинов
+    Chart.register(ChartDataLabels, AnnotationPlugin);
 
     new Chart(ctx, {
       type: 'line',
@@ -294,14 +300,13 @@ async function generateActivityChart(dailyActivity) {
           },
         },
       },
-      plugins: [require('chartjs-plugin-datalabels'), ChartAnnotation],
     });
 
     const buffer = canvas.toBuffer('image/png');
     console.log(`[GENERATE_ACTIVITY_CHART] Chart generated successfully for ${dailyActivity.length} data points`);
     return buffer;
   } catch (error) {
-    console.error(`[GENERATE_ACTIVITY_CHART] Error: ${error.message}`);
+    console.error(`[GENERATE_ACTIVITY_CHART] Error: ${error.message}`, error.stack);
     throw error;
   }
 }
