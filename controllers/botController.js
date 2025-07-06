@@ -60,8 +60,7 @@ bot.command('checkpayment', async (ctx) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }],
-            [{ text: '💡 О канале', callback_data: 'about' }],
+            [{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }, { text: '💡 О канале', callback_data: 'about' }],
           ],
         },
       });
@@ -105,13 +104,22 @@ bot.start(async (ctx) => {
     console.log(`[START] Sending reply to ${userId}`);
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
-    const inlineKeyboard = [
+    const inlineKeyboard = user.paymentStatus === 'succeeded' ? [
       [
-        ...(user.paymentStatus === 'succeeded' ? [] : [{ text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' }]),
+        { text: '💬 Техподдержка', url: settings.supportLink },
+        { text: '💡 О канале', callback_data: 'about' },
+        ...(adminIds.has(userId) ? [{ text: '👑 Админка', callback_data: 'admin_panel' }] : []),
+      ],
+    ] : [
+      [
+        { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
         { text: '💬 Техподдержка', url: settings.supportLink },
       ],
-      ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
-    ].filter(row => row.length > 0); // Удаляем пустые строки
+      [
+        { text: '💡 О канале', callback_data: 'about' },
+        ...(adminIds.has(userId) ? [{ text: '👑 Админка', callback_data: 'admin_panel' }] : []),
+      ],
+    ];
 
     const sentMessage = await ctx.replyWithMarkdown(
         user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage(),
@@ -347,15 +355,22 @@ bot.action('back', async (ctx) => {
     if (lastAction === 'start') {
       const settings = await getSettings();
       const user = await User.findOne({ userId });
-      const inlineKeyboard = [
+      const inlineKeyboard = user.paymentStatus === 'succeeded' ? [
         [
-          ...(user.paymentStatus === 'succeeded' ? [] : [{ text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' }]),
+          { text: '💬 Техподдержка', url: settings.supportLink },
+          { text: '💡 О канале', callback_data: 'about' },
+          ...(adminIds.has(userId) ? [{ text: '👑 Админка', callback_data: 'admin_panel' }] : []),
+        ],
+      ] : [
+        [
+          { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
           { text: '💬 Техподдержка', url: settings.supportLink },
         ],
-        ...(adminIds.has(userId)
-            ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]]
-            : [[{ text: '💡 О канале', callback_data: 'about' }]]),
-      ].filter(row => row.length > 0); // Удаляем пустые строки
+        [
+          { text: '💡 О канале', callback_data: 'about' },
+          ...(adminIds.has(userId) ? [{ text: '👑 Админка', callback_data: 'admin_panel' }] : []),
+        ],
+      ];
 
       const newText = user.paymentStatus === 'succeeded' ? await getPaidWelcomeMessage() : await getWelcomeMessage();
       const messageId = ctx.message?.message_id || ctx.session.currentMessageId;
