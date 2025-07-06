@@ -156,6 +156,12 @@ bot.action('admin_panel', async (ctx) => {
   }
 });
 
+// Функция для экранирования специальных символов в MarkdownV2
+function escapeMarkdownV2(text) {
+  if (!text) return text;
+  return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
+}
+
 bot.action('stats', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
@@ -165,16 +171,29 @@ bot.action('stats', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const totalUsers = await User.countDocuments();
     const paidUsers = await User.countDocuments({ paymentStatus: 'succeeded' });
-    const activeUsersLast24h = await User.find({ lastActivity: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }).select('firstName username userId');
-    let activeUsersList = 'Нет активных пользователей за последние 24 часа.';
-    if (activeUsersLast24h.length > 0) activeUsersList = activeUsersLast24h.map((user, index) => `${index + 1}. ${user.firstName} (${user.username ? `@${user.username}` : ''}, ID: ${user.userId})`.trim()).join('\n');
+    const activeUsersLast24h = await User.find({
+      lastActivity: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    }).select('firstName username userId');
 
-    const statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
+    let activeUsersList = 'Нет активных пользователей за последние 24 часа.';
+    if (activeUsersLast24h.length > 0) {
+      activeUsersList = activeUsersLast24h
+          .map(
+              (user, index) =>
+                  `${index + 1}. ${escapeMarkdownV2(user.firstName)} (${
+                      user.username ? `@${escapeMarkdownV2(user.username)}` : ''
+                  }, ID: ${user.userId})`
+          )
+          .join('\n');
+    }
+
+    const statsMessage = `📊 Статистика:\\n➖➖➖➖➖➖➖➖➖➖➖➖➖\\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\\n\\nПосетители за последние 24 часа:\\n${activeUsersList}`;
+
     ctx.session = ctx.session || {};
-    ctx.session.navHistory = ctx.session.navHistory || [];
+    ctx.session.navHistory = ctx.session.navHistory || easiest [];
     ctx.session.navHistory.push('admin_panel');
     await ctx.editMessageText(statsMessage, {
-      parse_mode: 'Markdown',
+      parse_mode: 'MarkdownV2',
       reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
     });
   } catch (error) {
@@ -273,27 +292,37 @@ bot.action('back', async (ctx) => {
       const settings = await getSettings();
       const user = await User.findOne({ userId });
       const replyMarkup = {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
-              { text: '💬 Техподдержка', url: settings.supportLink },
-            ],
-            ...(adminIds.has(userId) ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]] : [[{ text: '💡 О канале', callback_data: 'about' }]]),
+        inline_keyboard: [
+          [
+            { text: `🔥 Купить за ${settings.paymentAmount}р.`, callback_data: 'buy' },
+            { text: '💬 Техподдержка', url: settings.supportLink },
           ],
-        },
+          ...(adminIds.has(userId)
+              ? [[{ text: '👑 Админка', callback_data: 'admin_panel' }, { text: '💡 О канале', callback_data: 'about' }]]
+              : [[{ text: '💡 О канале', callback_data: 'about' }]]),
+        ],
       };
-      if (user.paymentStatus === 'succeeded' && user.inviteLink) {
-        await ctx.editMessageText(await getPaidWelcomeMessage(), {
+
+      // Проверяем, нужно ли редактировать сообщение
+      const currentText = ctx.message.text;
+      const newText = user.paymentStatus === 'succeeded' && user.inviteLink ? await getPaidWelcomeMessage() : await getWelcomeMessage();
+      const currentMarkup = JSON.stringify(ctx.message.reply_markup);
+      const newMarkup = JSON.stringify({ inline_keyboard: replyMarkup.inline_keyboard });
+
+      if (currentText === newText && currentMarkup === newMarkup) {
+        console.log(`[BACK] No changes needed for user ${userId}`);
+        return;
+      }
+
+      try {
+        await ctx.editMessageText(newText, {
           parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '💬 Техподдержка', url: settings.supportLink }],
-              [{ text: '💡 О канале', callback_data: 'about' }],
-            ],
-          },
+          reply_markup: replyMarkup,
         });
-      } else await ctx.editMessageText(await getWelcomeMessage(), { parse_mode: 'Markdown', reply_markup: replyMarkup.reply_markup });
+      } catch (editError) {
+        console.warn(`[BACK] Failed to edit message for user ${userId}:`, editError.message);
+        await ctx.replyWithMarkdown(newText, { reply_markup: replyMarkup });
+      }
     } else if (lastAction === 'admin_panel') {
       await ctx.editMessageText('Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
         parse_mode: 'Markdown',
