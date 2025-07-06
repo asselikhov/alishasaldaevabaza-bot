@@ -1,5 +1,5 @@
 const express = require('express');
-const ExcelJS = require('exceljs');
+const mongoose = require('mongoose');
 const { bot, sendInviteLink } = require('./services/telegram');
 const { processPayment } = require('./controllers/botController');
 const { handleYookassaWebhook } = require('./controllers/webhookController');
@@ -9,6 +9,7 @@ const { getPayment } = require('./services/yookassa');
 require('dotenv').config();
 
 const app = express();
+const port = process.env.PORT || 10000;
 
 // Middleware для получения raw body для вебхука YooKassa
 app.use('/webhook/yookassa', express.raw({ type: 'application/json' }));
@@ -31,6 +32,23 @@ for (const envVar of requiredEnvVars) {
 }
 console.log('All required environment variables are set');
 
+// Подключение MongoDB
+mongoose.set('strictQuery', true);
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('Connected to MongoDB: ' + process.env.MONGODB_URI.replace(/\/\/.*@/, '//[hidden]@')))
+    .catch(err => {
+      console.error('MongoDB connection error:', err);
+      process.exit(1);
+    });
+
+// Глобальный обработчик ошибок Telegraf
+bot.catch((err, ctx) => {
+  console.error(`[TELEGRAM_ERROR] Error for update ${JSON.stringify(ctx.update)}:`, err.stack);
+  if (ctx.chat) {
+    ctx.reply('Произошла ошибка при обработке команды. Попробуйте позже или свяжитесь с поддержкой.');
+  }
+});
+
 // Явная настройка вебхука
 app.post(`/bot${process.env.BOT_TOKEN}`, async (req, res) => {
   console.log(`[${new Date().toISOString()}] Webhook endpoint hit with body:`, JSON.stringify(req.body));
@@ -38,7 +56,7 @@ app.post(`/bot${process.env.BOT_TOKEN}`, async (req, res) => {
     await bot.handleUpdate(req.body);
     res.status(200).send('OK');
   } catch (err) {
-    console.error('Error handling webhook update:', err.message);
+    console.error(`[WEBHOOK] Error handling webhook update:`, err.message);
     res.status(500).send('Error processing webhook');
   }
 });
@@ -49,10 +67,13 @@ app.all('/ping', (req, res) => {
   res.status(200).send('Bot is awake!');
 });
 
-app.get('/', (req, res) => res.send('Это API бота alishasaldaevabaza-bot. Используйте /health или /ping для проверки статуса или обратитесь к боту в Telegram.'));
+app.get('/', (req, res) => {
+  console.log(`[${new Date().toISOString()}] Root endpoint accessed`);
+  res.send('Это API бота alishasaldaevabaza-bot. Используйте /health или /ping для проверки статуса или обратитесь к боту в Telegram.');
+});
 
 app.get('/return', async (req, res) => {
-  console.log('Received /return request with query:', req.query);
+  console.log(`[${new Date().toISOString()}] Received /return request with query:`, req.query);
   const { paymentId: localPaymentId } = req.query;
   if (localPaymentId) {
     try {
@@ -72,11 +93,11 @@ app.get('/return', async (req, res) => {
           res.send('Оплата ещё не подтверждена.');
         }
       } else {
-        console.warn(`No user found for localPaymentId: ${localPaymentId}`);
+        console.warn(`[RETURN] No user found for localPaymentId: ${localPaymentId}`);
         res.status(404).send('Пользователь не найден.');
       }
     } catch (error) {
-      console.error('Error processing /return:', error.stack);
+      console.error(`[RETURN] Error processing /return:`, error.stack);
       res.status(500).send('Ошибка при обработке платежа.');
     }
   } else {
@@ -84,10 +105,13 @@ app.get('/return', async (req, res) => {
   }
 });
 
-app.get('/health', (req, res) => res.sendStatus(200));
+app.get('/health', (req, res) => {
+  console.log(`[${new Date().toISOString()}] Health check accessed`);
+  res.sendStatus(200);
+});
 
 app.post('/webhook/yookassa', handleYookassaWebhook);
 
-const PORT = process.env.PORT || 10000;
-console.log(`Starting server on port ${PORT}`);
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Запуск сервера
+console.log(`Starting server on port ${port}`);
+app.listen(port, () => console.log(`Server running on port ${port}`));

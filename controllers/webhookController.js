@@ -48,8 +48,12 @@ async function handleYookassaWebhook(req, res) {
         console.log(`[WEBHOOK] Sending invite link for user ${user.userId}`);
         await sendInviteLink(user, { chat: { id: user.chatId || (await getSettings()).supportLink } }, object.id);
         await User.updateOne({ paymentId: object.id }, { processed: true });
-      } else console.log(`[WEBHOOK] User ${user.userId} already processed or joined, skipping invite link`);
-    } else console.log(`[WEBHOOK] Received unhandled event: ${event}`);
+      } else {
+        console.log(`[WEBHOOK] User ${user.userId} already processed or joined, skipping invite link`);
+      }
+    } else {
+      console.log(`[WEBHOOK] Received unhandled event: ${event}`);
+    }
     res.sendStatus(200);
   } catch (error) {
     console.error('[WEBHOOK] Error in Yookassa webhook:', error.message, error.stack);

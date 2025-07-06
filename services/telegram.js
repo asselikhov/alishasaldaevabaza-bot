@@ -5,12 +5,17 @@ const { getSettings, resetSettingsCache } = require('./settings');
 require('dotenv').config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-bot.catch((err, ctx) => {
-  console.error('Telegraf global error for update', ctx.update, ':', err.message);
-  if (ctx) ctx.reply('Произошла ошибка. Попробуйте позже.');
-});
 
+// Настройка локального хранилища сессий
+console.log('[SETUP] Initializing Telegraf session middleware');
 bot.use(session());
+
+bot.catch((err, ctx) => {
+  console.error('[TELEGRAM_ERROR] Error for update', JSON.stringify(ctx.update), ':', err.stack);
+  if (ctx && ctx.chat) {
+    ctx.reply('Произошла ошибка. Попробуйте позже.');
+  }
+});
 
 async function sendInviteLink(user, ctx, paymentId) {
   try {
@@ -35,7 +40,9 @@ async function sendInviteLink(user, ctx, paymentId) {
 
     const { getPayment } = require('./yookassa');
     const paymentData = await getPayment(paymentId);
-    if (paymentData.status !== 'succeeded') throw new Error(`[INVITE] Payment ${paymentId} status is ${paymentData.status}, expected succeeded`);
+    if (paymentData.status !== 'succeeded') {
+      throw new Error(`[INVITE] Payment ${paymentId} status is ${paymentData.status}, expected succeeded`);
+    }
 
     const expiresDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60; // Срок действия 24 часа
     const chatInvite = await bot.telegram.createChatInviteLink(process.env.CHANNEL_ID, {

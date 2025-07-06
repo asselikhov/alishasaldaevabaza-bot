@@ -1,18 +1,14 @@
 const { bot, sendInviteLink, getSettings, getWelcomeMessage, getPaidWelcomeMessage, resetSettingsCache } = require('../services/telegram');
-const { session } = require('telegraf');
 const escape = require('markdown-escape');
 const { createPayment, getPayment } = require('../services/yookassa');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
 
-// Настройка локального хранилища сессий
-bot.use(session());
-
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 
 async function processPayment(ctx, userId, chatId) {
   try {
-    console.log(`YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
+    console.log(`[PAYMENT] Processing payment for user ${userId}, YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'missing'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
       return ctx.reply('Вы уже оплатили доступ! Вот ваша одноразовая ссылка:', {
@@ -23,7 +19,7 @@ async function processPayment(ctx, userId, chatId) {
 
     const settings = await getSettings();
     const localPaymentId = require('uuid').v4();
-    console.log(`Creating payment for user ${userId}, localPaymentId: ${localPaymentId}`);
+    console.log(`[PAYMENT] Creating payment for user ${userId}, localPaymentId: ${localPaymentId}`);
     const payment = await Promise.race([
       createPayment({
         amount: settings.paymentAmount,
@@ -44,7 +40,7 @@ async function processPayment(ctx, userId, chatId) {
       reply_markup: { inline_keyboard: [[{ text: 'Оплатить', url: payment.confirmation.confirmation_url }]] },
     });
   } catch (error) {
-    console.error(`Payment error for user ${userId}:`, error.message);
+    console.error(`[PAYMENT] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при создании платежа. Попробуйте позже или свяжитесь с поддержкой.', {
       reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
     });
@@ -54,6 +50,7 @@ async function processPayment(ctx, userId, chatId) {
 bot.command('checkpayment', async (ctx) => {
   const userId = String(ctx.from.id);
   try {
+    console.log(`[CHECKPAYMENT] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const user = await User.findOne({ userId });
     if (!user || !user.paymentId) return ctx.reply('У вас нет активных платежей.');
@@ -81,7 +78,7 @@ bot.command('checkpayment', async (ctx) => {
       reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
     });
   } catch (error) {
-    console.error(`Error in /checkpayment for user ${userId}:`, error.message);
+    console.error(`[CHECKPAYMENT] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при проверке статуса платежа. Попробуйте позже или свяжитесь с поддержкой.', {
       reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
     });
@@ -89,22 +86,23 @@ bot.command('checkpayment', async (ctx) => {
 });
 
 bot.start(async (ctx) => {
-  console.log(`Received /start command from ${ctx.from.id}`);
   const userId = String(ctx.from.id);
   const chatId = String(ctx.chat.id);
   const { first_name: firstName, username, phone_number: phoneNumber } = ctx.from;
 
   try {
-    console.log(`Processing /start for userId: ${userId}`);
+    console.log(`[START] Received /start command from user ${userId}`);
     let user = await User.findOne({ userId });
-    console.log(`User found or to be created: ${user ? 'exists' : 'new'}`);
+    console.log(`[START] User ${userId} found or to be created: ${user ? 'exists' : 'new'}`);
     if (!user) {
       user = await User.create({ userId, chatId, firstName, username, phoneNumber, lastActivity: new Date() });
-      console.log(`User created: ${JSON.stringify(user)}`);
-    } else await User.updateOne({ userId }, { lastActivity: new Date() });
+      console.log(`[START] User created: ${JSON.stringify(user)}`);
+    } else {
+      await User.updateOne({ userId }, { lastActivity: new Date() });
+    }
 
     const settings = await getSettings();
-    console.log(`Sending reply to ${userId}`);
+    console.log(`[START] Sending reply to ${userId}`);
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     const sentMessage = await ctx.replyWithMarkdown(
@@ -122,9 +120,9 @@ bot.start(async (ctx) => {
         }
     );
     ctx.session.currentMessageId = sentMessage.message_id;
-    console.log(`Reply sent to ${userId}, stored message_id: ${ctx.session.currentMessageId}`);
+    console.log(`[START] Reply sent to ${userId}, stored message_id: ${ctx.session.currentMessageId}`);
   } catch (error) {
-    console.error(`Error in /start for user ${userId}:`, error.message);
+    console.error(`[START] Error for user ${userId}:`, error.message);
     await ctx.reply('Произошла ошибка. Попробуй снова или свяжитесь с нами.');
   }
 });
@@ -142,6 +140,7 @@ bot.action('admin_panel', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[ADMIN_PANEL] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
@@ -184,7 +183,7 @@ bot.action('admin_panel', async (ctx) => {
       console.log(`[ADMIN_PANEL] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
     }
   } catch (error) {
-    console.error(`Error in admin panel for user ${userId}:`, error.stack);
+    console.error(`[ADMIN_PANEL] Error for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при открытии админ-панели.');
   }
 });
@@ -196,6 +195,7 @@ bot.action('stats', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[STATS] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const totalUsers = await User.countDocuments();
     const paidUsers = await User.countDocuments({ paymentStatus: 'succeeded' });
@@ -216,6 +216,7 @@ bot.action('stats', async (ctx) => {
     }
 
     const statsMessage = escape(`📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`);
+    console.log(`[STATS] Generated statsMessage for user ${userId}: ${statsMessage}`);
 
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
@@ -249,7 +250,7 @@ bot.action('stats', async (ctx) => {
       console.log(`[STATS] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
     }
   } catch (error) {
-    console.error(`Error in stats for user ${userId}:`, error.message);
+    console.error(`[STATS] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при получении статистики. Попробуйте позже.');
   }
 });
@@ -260,6 +261,7 @@ bot.action('export_subscribers', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[EXPORT_SUBSCRIBERS] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const users = await User.find({ paymentStatus: 'succeeded' }).lean();
     if (!users.length) return ctx.reply('Нет оплаченных подписчиков для выгрузки.');
@@ -326,7 +328,7 @@ bot.action('export_subscribers', async (ctx) => {
     const buffer = await workbook.xlsx.writeBuffer();
     await ctx.replyWithDocument({ source: buffer, filename: `subscribers_${new Date().toISOString().split('T')[0]}.xlsx` });
   } catch (error) {
-    console.error(`Error in export_subscribers for user ${userId}:`, error.message);
+    console.error(`[EXPORT_SUBSCRIBERS] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка передачи подписчиков. Попробуйте позже.');
   }
 });
@@ -336,6 +338,7 @@ bot.action('back', async (ctx) => {
   const userId = String(ctx.from.id);
   const chatId = String(ctx.chat.id);
   try {
+    console.log(`[BACK] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
@@ -424,7 +427,7 @@ bot.action('back', async (ctx) => {
       }
     }
   } catch (error) {
-    console.error(`Error in back for user ${userId}:`, error.stack);
+    console.error(`[BACK] Error for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте снова.');
   }
 });
@@ -436,6 +439,7 @@ bot.action('edit', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[EDIT] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
@@ -480,7 +484,7 @@ bot.action('edit', async (ctx) => {
       console.log(`[EDIT] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
     }
   } catch (error) {
-    console.error(`Error in edit for user ${userId}:`, error.stack);
+    console.error(`[EDIT] Error for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при выборе редактирования.');
   }
 });
@@ -491,12 +495,13 @@ bot.action('edit_channel', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[EDIT_CHANNEL] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'channelDescription';
     await ctx.reply('Введите новое описание канала:');
   } catch (error) {
-    console.error(`Error in edit_channel for user ${userId}:`, error.stack);
+    console.error(`[EDIT_CHANNEL] Error for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе описания канала.');
   }
 });
@@ -507,12 +512,13 @@ bot.action('edit_support', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[EDIT_SUPPORT] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'supportLink';
     await ctx.reply('Введите новый Telegram-username (например, @Username) или URL техподдержки:');
   } catch (error) {
-    console.error(`Error in edit_support for user ${userId}:`, error.stack);
+    console.error(`[EDIT_SUPPORT] Error for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе ссылки техподдержки.');
   }
 });
@@ -523,12 +529,13 @@ bot.action('edit_welcome', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[EDIT_WELCOME] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'welcomeMessage';
     await ctx.reply('Введите новое приветственное сообщение:');
   } catch (error) {
-    console.error(`Error in edit_welcome for user ${userId}:`, error.stack);
+    console.error(`[EDIT_WELCOME] Error for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе приветственного сообщения.');
   }
 });
@@ -539,12 +546,13 @@ bot.action('edit_payment_amount', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[EDIT_PAYMENT_AMOUNT] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'paymentAmount';
     await ctx.reply('Введите новую сумму оплаты в рублях (например, 499):');
   } catch (error) {
-    console.error(`Error in edit_payment_amount for user ${userId}:`, error.stack);
+    console.error(`[EDIT_PAYMENT_AMOUNT] Error for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе суммы оплаты.');
   }
 });
@@ -555,12 +563,13 @@ bot.action('edit_paid_welcome', async (ctx) => {
   if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
 
   try {
+    console.log(`[EDIT_PAID_WELCOME] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     ctx.session = ctx.session || {};
     ctx.session.editing = 'paidWelcomeMessage';
     await ctx.reply('Введите новое приветственное сообщение для пользователей после оплаты:');
   } catch (error) {
-    console.error(`Error in edit_paid_welcome for user ${userId}:`, error.stack);
+    console.error(`[EDIT_PAID_WELCOME] Error for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при запросе приветственного сообщения после оплаты.');
   }
 });
@@ -571,6 +580,7 @@ bot.action('buy', async (ctx) => {
   const chatId = String(ctx.chat.id);
 
   try {
+    console.log(`[BUY] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const user = await User.findOne({ userId });
     if (!user.email) {
@@ -581,7 +591,7 @@ bot.action('buy', async (ctx) => {
     }
     await processPayment(ctx, userId, chatId);
   } catch (error) {
-    console.error(`Error in buy for user ${userId}:`, error.message);
+    console.error(`[BUY] Error for user ${userId}:`, error.message);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
@@ -591,6 +601,7 @@ bot.action('about', async (ctx) => {
   const userId = String(ctx.from.id);
   const chatId = String(ctx.chat.id);
   try {
+    console.log(`[ABOUT] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const settings = await getSettings();
     ctx.session = ctx.session || {};
@@ -619,7 +630,7 @@ bot.action('about', async (ctx) => {
       console.log(`[ABOUT] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
     }
   } catch (error) {
-    console.error(`Error in about for user ${userId}:`, error.stack);
+    console.error(`[ABOUT] Error for user ${userId}:`, error.stack);
     await ctx.reply('Произошла ошибка. Попробуйте позже.');
   }
 });
@@ -629,6 +640,7 @@ bot.on('text', async (ctx) => {
   ctx.session = ctx.session || {};
 
   try {
+    console.log(`[TEXT] Processing text input for user ${userId}: ${ctx.message.text}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const text = ctx.message.text.trim();
 
@@ -683,7 +695,7 @@ bot.on('text', async (ctx) => {
       await ctx.reply('Приветственное сообщение после оплаты обновлено!');
     }
   } catch (error) {
-    console.error(`Error processing text input for user ${userId}:`, error.stack);
+    console.error(`[TEXT] Error processing text input for user ${userId}:`, error.stack);
     await ctx.reply('Ошибка при сохранении изменений. Попробуйте снова.');
   }
 });
