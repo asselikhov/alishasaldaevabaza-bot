@@ -144,7 +144,7 @@ function escapeMarkdownV2(text) {
 }
 
 async function generateActivityChart(dailyActivity) {
-  const canvas = createCanvas(800, 400);
+  const canvas = createCanvas(1000, 500); // Увеличен размер для большей читаемости
   const ctx = canvas.getContext('2d');
 
   const labels = dailyActivity.map(entry => {
@@ -153,43 +153,57 @@ async function generateActivityChart(dailyActivity) {
   });
   const data = dailyActivity.map(entry => entry.count);
 
+  // Градиент для столбцов
+  const gradient = ctx.createLinearGradient(0, 0, 0, 500);
+  gradient.addColorStop(0, '#FF6B6B'); // Яркий красный вверху
+  gradient.addColorStop(1, '#4ECDC4'); // Бирюзовый внизу
+
   new Chart(ctx, {
-    type: 'bar', // Изменено на столбчатый график для лучшей видимости изменений
+    type: 'bar', // Столбчатый график для лучшей визуализации
     data: {
       labels: labels,
       datasets: [{
         label: 'Активные пользователи',
         data: data,
-        backgroundColor: 'rgba(30, 144, 255, 0.8)', // Яркий синий для столбцов
-        borderColor: '#1E90FF',
-        borderWidth: 1,
+        backgroundColor: gradient, // Градиент для красоты
+        borderColor: '#FF6B6B', // Яркая граница
+        borderWidth: 2,
+        barPercentage: 0.8, // Пропорция ширины столбцов
+        categoryPercentage: 0.9, // Пропорция между столбцами
       }],
     },
     options: {
       responsive: true,
+      animation: {
+        duration: 1500, // Анимация появления
+        easing: 'easeOutBounce',
+      },
       plugins: {
         legend: {
           display: true,
           position: 'top',
           labels: {
-            font: { size: 16, family: 'Arial', weight: 'bold' },
-            color: '#333',
+            font: { size: 18, family: 'Arial', weight: 'bold' },
+            color: '#2C3E50', // Тёмно-синий для контраста
           },
         },
         title: {
           display: true,
-          text: 'Посещаемость за последние 7 дней',
-          font: { size: 20, family: 'Arial', weight: 'bold' },
-          color: '#333',
+          text: 'Посещаемость за текущий месяц (Июль 2025)',
+          font: { size: 24, family: 'Arial', weight: 'bold' },
+          color: '#2C3E50',
           padding: 20,
         },
-        datalabels: { // Добавляем подписи над столбцами
+        datalabels: {
           display: true,
-          color: '#333',
-          font: { size: 14, weight: 'bold' },
+          color: '#FFFFFF', // Белый для контраста с градиентом
+          font: { size: 16, weight: 'bold' },
           anchor: 'end',
           align: 'top',
-          formatter: (value) => value, // Показываем само значение
+          formatter: (value) => value || 0, // Показываем 0, если данных нет
+          backgroundColor: 'rgba(44, 62, 80, 0.7)', // Полупрозрачный фон для подписей
+          borderRadius: 4,
+          padding: 2,
         },
       },
       scales: {
@@ -197,32 +211,33 @@ async function generateActivityChart(dailyActivity) {
           title: {
             display: true,
             text: 'Дата',
-            font: { size: 16, family: 'Arial', weight: 'bold' },
-            color: '#333',
+            font: { size: 18, family: 'Arial', weight: 'bold' },
+            color: '#2C3E50',
           },
           ticks: {
-            color: '#333',
-            font: { size: 14 },
+            color: '#2C3E50',
+            font: { size: 16 },
           },
-          grid: { display: false },
+          grid: { color: 'rgba(44, 62, 80, 0.1)' }, // Лёгкая сетка
         },
         y: {
           title: {
             display: true,
             text: 'Количество пользователей',
-            font: { size: 16, family: 'Arial', weight: 'bold' },
-            color: '#333',
+            font: { size: 18, family: 'Arial', weight: 'bold' },
+            color: '#2C3E50',
           },
           ticks: {
-            color: '#333',
-            font: { size: 14 },
-            beginAtZero: true, // Начинаем с 0
-            stepSize: 1, // Шаг делений — целые числа
-            precision: 0, // Только целые числа
-            callback: (value) => Number.isInteger(value) ? value : null, // Убираем дробные числа
+            color: '#2C3E50',
+            font: { size: 16 },
+            beginAtZero: true,
+            stepSize: 1,
+            precision: 0,
+            callback: (value) => Number.isInteger(value) ? value : null,
           },
-          grid: { color: 'rgba(0, 0, 0, 0.1)' },
-          min: 0, // Минимальное значение — 0
+          grid: { color: 'rgba(44, 62, 80, 0.1)' }, // Лёгкая сетка
+          min: 0,
+          max: Math.max(...data, 10) + 5, // Динамический максимум с запасом
         },
       },
     },
@@ -325,17 +340,16 @@ bot.action('stats', async (ctx) => {
 
     console.log(`[STATS] Generated statsMessage for user ${userId}: ${statsMessage}`);
 
-    // Собираем данные для графика (последние 7 дней)
-    const days = 7;
-    const endDate = new Date();
-    endDate.setHours(23, 59, 59, 999);
-    const startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
-    startDate.setHours(0, 0, 0, 0);
+    // Собираем данные для графика (текущий месяц)
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // Конец текущего дня
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    startOfMonth.setHours(0, 0, 0, 0);
 
     const dailyActivity = await User.aggregate([
       {
         $match: {
-          lastActivity: { $gte: startDate, $lte: endDate },
+          lastActivity: { $gte: startOfMonth, $lte: today },
         },
       },
       {
@@ -351,13 +365,14 @@ bot.action('stats', async (ctx) => {
       },
     ]);
 
-    // Формируем полный список дат для графика, включая дни без активности
+    // Формируем полный список дат для текущего месяца, включая дни без активности
     const dateArray = [];
-    for (let i = 0; i < days; i++) {
-      const date = new Date(startDate.getTime() + (i * 24 * 60 * 60 * 1000));
-      const dateStr = date.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).split('.').reverse().join('-');
+    let currentDate = new Date(startOfMonth);
+    while (currentDate <= today) {
+      const dateStr = currentDate.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).split('.').reverse().join('-');
       const found = dailyActivity.find(d => d._id === dateStr);
       dateArray.push({ date: dateStr, count: found ? found.count : 0 });
+      currentDate.setDate(currentDate.getDate() + 1);
     }
 
     // Генерируем график
