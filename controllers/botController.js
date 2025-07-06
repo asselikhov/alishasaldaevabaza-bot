@@ -1,7 +1,34 @@
 const { bot, sendInviteLink, getSettings, getWelcomeMessage, getPaidWelcomeMessage, resetSettingsCache } = require('../services/telegram');
+const { session } = require('@telegraf/session');
+const Redis = require('redis');
+const escape = require('markdown-escape');
 const { createPayment, getPayment } = require('../services/yookassa');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
+
+// Настройка Redis клиента
+const redisClient = Redis.createClient({
+  url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
+});
+
+// Подключение к Redis
+redisClient.connect().catch(err => console.error('Redis connection error:', err));
+
+// Настройка сессий с Redis
+bot.use(session({
+  store: {
+    get: async (key) => {
+      const data = await redisClient.get(key);
+      return data ? JSON.parse(data) : null;
+    },
+    set: async (key, value) => {
+      await redisClient.set(key, JSON.stringify(value), { EX: 24 * 60 * 60 }); // Хранить 24 часа
+    },
+    delete: async (key) => {
+      await redisClient.del(key);
+    },
+  },
+}));
 
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 
@@ -152,7 +179,7 @@ bot.action('admin_panel', async (ctx) => {
     };
 
     let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
-    if (messageId && ctx.message) {
+    if (messageId) {
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, 'Админка:\n➖➖➖➖➖➖➖➖➖➖➖', {
           parse_mode: 'Markdown',
@@ -210,14 +237,14 @@ bot.action('stats', async (ctx) => {
           .join('\n');
     }
 
-    const statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
+    const statsMessage = escape(`📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`);
 
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
 
     let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
-    if (messageId && ctx.message) {
+    if (messageId) {
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, statsMessage, {
           parse_mode: 'MarkdownV2',
@@ -352,7 +379,7 @@ bot.action('back', async (ctx) => {
       };
 
       const newText = user.paymentStatus === 'succeeded' && user.inviteLink ? await getPaidWelcomeMessage() : await getWelcomeMessage();
-      const messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+      const messageId = ctx.message?.message_id || ctx.session.currentMessageId;
 
       if (!messageId) {
         console.warn(`[BACK] No message_id available for user ${userId}, sending new message`);
@@ -378,7 +405,7 @@ bot.action('back', async (ctx) => {
         console.log(`[BACK] Sent new message ${ctx.session.currentMessageId} for user ${userId}`);
       }
     } else if (lastAction === 'admin_panel') {
-      const messageId = ctx.session.currentMessageId || ctx.message?.message_id;
+      const messageId = ctx.message?.message_id || ctx.session.currentMessageId;
       const replyMarkup = {
         inline_keyboard: [
           [{ text: 'Редактировать', callback_data: 'edit' }],
@@ -448,7 +475,7 @@ bot.action('edit', async (ctx) => {
     };
 
     let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
-    if (messageId && ctx.message) {
+    if (messageId) {
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, 'Выберите, что редактировать:', {
           parse_mode: 'Markdown',
@@ -593,7 +620,7 @@ bot.action('about', async (ctx) => {
     const replyMarkup = { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] };
     let messageId = ctx.message?.message_id || ctx.session.currentMessageId;
 
-    if (messageId && ctx.message) {
+    if (messageId) {
       try {
         await ctx.telegram.editMessageText(chatId, messageId, undefined, settings.channelDescription, {
           parse_mode: 'Markdown',
