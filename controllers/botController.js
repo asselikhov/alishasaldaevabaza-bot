@@ -190,7 +190,7 @@ bot.action('stats', async (ctx) => {
     const statsMessage = `📊 Статистика:\\n➖➖➖➖➖➖➖➖➖➖➖➖➖\\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\\n\\nПосетители за последние 24 часа:\\n${activeUsersList}`;
 
     ctx.session = ctx.session || {};
-    ctx.session.navHistory = ctx.session.navHistory || easiest [];
+    ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
     await ctx.editMessageText(statsMessage, {
       parse_mode: 'MarkdownV2',
