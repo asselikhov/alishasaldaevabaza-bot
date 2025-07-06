@@ -144,7 +144,7 @@ function escapeMarkdownV2(text) {
 }
 
 async function generateActivityChart(dailyActivity) {
-  const canvas = createCanvas(1000, 500); // Увеличен размер для большей читаемости
+  const canvas = createCanvas(1000, 500);
   const ctx = canvas.getContext('2d');
 
   const labels = dailyActivity.map(entry => {
@@ -153,57 +153,72 @@ async function generateActivityChart(dailyActivity) {
   });
   const data = dailyActivity.map(entry => entry.count);
 
+  // Градиентный фон для холста
+  const bgGradient = ctx.createLinearGradient(0, 0, 0, 500);
+  bgGradient.addColorStop(0, '#F5F7FA'); // Светло-серый
+  bgGradient.addColorStop(1, '#E0EAF2'); // Ещё более светлый
+  ctx.fillStyle = bgGradient;
+  ctx.fillRect(0, 0, 1000, 500);
+
   // Градиент для столбцов
-  const gradient = ctx.createLinearGradient(0, 0, 0, 500);
-  gradient.addColorStop(0, '#FF6B6B'); // Яркий красный вверху
-  gradient.addColorStop(1, '#4ECDC4'); // Бирюзовый внизу
+  const barGradient = ctx.createLinearGradient(0, 500, 0, 0);
+  barGradient.addColorStop(0, '#3498DB'); // Синий
+  barGradient.addColorStop(1, '#F1C40F'); // Золотой
 
   new Chart(ctx, {
-    type: 'bar', // Столбчатый график для лучшей визуализации
+    type: 'bar',
     data: {
       labels: labels,
       datasets: [{
         label: 'Активные пользователи',
         data: data,
-        backgroundColor: gradient, // Градиент для красоты
-        borderColor: '#FF6B6B', // Яркая граница
-        borderWidth: 2,
-        barPercentage: 0.8, // Пропорция ширины столбцов
-        categoryPercentage: 0.9, // Пропорция между столбцами
+        backgroundColor: barGradient,
+        borderColor: '#2980B9', // Тёмно-синяя граница
+        borderWidth: 1,
+        borderRadius: 8, // Закруглённые углы
+        barThickness: 30, // Ширина столбцов
+        shadowOffsetX: 2, // Лёгкая тень для 3D-эффекта
+        shadowOffsetY: 2,
+        shadowBlur: 10,
+        shadowColor: 'rgba(0, 0, 0, 0.2)',
       }],
     },
     options: {
       responsive: true,
       animation: {
-        duration: 1500, // Анимация появления
-        easing: 'easeOutBounce',
+        duration: 1000,
+        easing: 'easeOutQuad',
       },
       plugins: {
         legend: {
           display: true,
           position: 'top',
           labels: {
-            font: { size: 18, family: 'Arial', weight: 'bold' },
-            color: '#2C3E50', // Тёмно-синий для контраста
+            font: { size: 16, family: 'Roboto', weight: 'bold' },
+            color: '#34495E',
+            boxWidth: 20,
+            padding: 20,
           },
         },
         title: {
           display: true,
-          text: 'Посещаемость за текущий месяц (Июль 2025)',
-          font: { size: 24, family: 'Arial', weight: 'bold' },
+          text: 'Активность пользователей за Июль 2025',
+          font: { size: 22, family: 'Roboto', weight: 'bold' },
           color: '#2C3E50',
-          padding: 20,
+          padding: 15,
         },
         datalabels: {
           display: true,
-          color: '#FFFFFF', // Белый для контраста с градиентом
-          font: { size: 16, weight: 'bold' },
+          color: '#FFFFFF',
+          font: { size: 14, family: 'Roboto', weight: 'bold' },
           anchor: 'end',
           align: 'top',
-          formatter: (value) => value || 0, // Показываем 0, если данных нет
-          backgroundColor: 'rgba(44, 62, 80, 0.7)', // Полупрозрачный фон для подписей
-          borderRadius: 4,
-          padding: 2,
+          formatter: (value) => value || 0,
+          backgroundColor: 'rgba(52, 152, 219, 0.8)', // Полупрозрачный синий фон
+          borderRadius: 6,
+          padding: 4,
+          borderWidth: 1,
+          borderColor: '#2980B9',
         },
       },
       scales: {
@@ -211,37 +226,43 @@ async function generateActivityChart(dailyActivity) {
           title: {
             display: true,
             text: 'Дата',
-            font: { size: 18, family: 'Arial', weight: 'bold' },
-            color: '#2C3E50',
+            font: { size: 16, family: 'Roboto', weight: 'bold' },
+            color: '#34495E',
           },
           ticks: {
-            color: '#2C3E50',
-            font: { size: 16 },
+            color: '#34495E',
+            font: { size: 14, family: 'Roboto' },
           },
-          grid: { color: 'rgba(44, 62, 80, 0.1)' }, // Лёгкая сетка
+          grid: {
+            color: 'rgba(52, 73, 94, 0.1)',
+            borderColor: 'rgba(52, 73, 94, 0.2)',
+          },
         },
         y: {
           title: {
             display: true,
             text: 'Количество пользователей',
-            font: { size: 18, family: 'Arial', weight: 'bold' },
-            color: '#2C3E50',
+            font: { size: 16, family: 'Roboto', weight: 'bold' },
+            color: '#34495E',
           },
           ticks: {
-            color: '#2C3E50',
-            font: { size: 16 },
+            color: '#34495E',
+            font: { size: 14, family: 'Roboto' },
             beginAtZero: true,
             stepSize: 1,
             precision: 0,
             callback: (value) => Number.isInteger(value) ? value : null,
           },
-          grid: { color: 'rgba(44, 62, 80, 0.1)' }, // Лёгкая сетка
+          grid: {
+            color: 'rgba(52, 73, 94, 0.1)',
+            borderColor: 'rgba(52, 73, 94, 0.2)',
+          },
           min: 0,
-          max: Math.max(...data, 10) + 5, // Динамический максимум с запасом
+          max: Math.max(...data, 10) + 5,
         },
       },
     },
-    plugins: [require('chartjs-plugin-datalabels')], // Подключаем плагин для подписей
+    plugins: [require('chartjs-plugin-datalabels')],
   });
 
   return canvas.toBuffer('image/png');
@@ -342,7 +363,7 @@ bot.action('stats', async (ctx) => {
 
     // Собираем данные для графика (текущий месяц)
     const today = new Date();
-    today.setHours(23, 59, 59, 999); // Конец текущего дня
+    today.setHours(23, 59, 59, 999);
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     startOfMonth.setHours(0, 0, 0, 0);
 
