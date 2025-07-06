@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Settings = require('../models/Settings');
 const { createCanvas } = require('canvas');
 const Chart = require('chart.js/auto');
+const { ChartAnnotation } = require('chartjs-plugin-annotation');
 
 const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id => id.trim()));
 
@@ -73,7 +74,9 @@ bot.command('checkpayment', async (ctx) => {
       return;
     }
 
-    const payment = await getPayment(user.paymentId);
+    const paymentក
+
+    System: payment = await getPayment(user.paymentId);
     if (payment.status === 'succeeded') await sendInviteLink(user, ctx, user.paymentId);
     else await ctx.reply(`Статус вашего платежа: ${payment.status}. Пожалуйста, завершите оплату или свяжитесь с поддержкой.`, {
       reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
@@ -144,7 +147,7 @@ function escapeMarkdownV2(text) {
 }
 
 async function generateActivityChart(dailyActivity) {
-  const canvas = createCanvas(1000, 500);
+  const canvas = createCanvas(800, 400); // Уменьшенный размер для Telegram
   const ctx = canvas.getContext('2d');
 
   const labels = dailyActivity.map(entry => {
@@ -153,56 +156,86 @@ async function generateActivityChart(dailyActivity) {
   });
   const data = dailyActivity.map(entry => entry.count);
 
-  // Устанавливаем тёмный фон
-  ctx.fillStyle = '#1E1E1E';
-  ctx.fillRect(0, 0, 1000, 500);
+  // Находим максимальную активность для аннотации
+  const maxActivity = Math.max(...data);
+  const maxIndex = data.indexOf(maxActivity);
+  const maxDate = labels[maxIndex];
+
+  // Темный фон с градиентом
+  const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+  gradient.addColorStop(0, '#1E1E1E');
+  gradient.addColorStop(1, '#2D2D2D');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 800, 400);
 
   new Chart(ctx, {
-    type: 'line', // Линейный график для профессионального вида
+    type: 'line',
     data: {
       labels: labels,
       datasets: [{
         label: 'Активные пользователи',
         data: data,
-        borderColor: '#00A2E8', // Яркий синий для линии
-        borderWidth: 2,
-        pointBackgroundColor: '#00A2E8',
+        borderColor: '#3B82F6', // Мягкий синий
+        borderWidth: 3,
+        pointBackgroundColor: '#3B82F6',
         pointRadius: 4,
         pointHoverRadius: 6,
-        fill: false, // Без заливки для чистоты
+        tension: 0.4, // Плавные линии
+        fill: {
+          target: 'origin',
+          above: 'rgba(59, 130, 246, 0.1)', // Легкая заливка
+        },
       }],
     },
     options: {
       responsive: true,
-      animation: false, // Отключаем анимацию для строгого вида
+      animation: {
+        duration: 1000, // Плавная анимация
+        easing: 'easeOutQuart',
+      },
       plugins: {
         legend: {
           display: true,
           position: 'top',
           labels: {
-            font: { size: 14, family: 'Arial' },
-            color: '#FFFFFF',
-            boxWidth: 15,
-            padding: 10,
+            font: { size: 14, family: 'Inter, sans-serif' },
+            color: '#E5E7EB', // Светлый серый
+            boxWidth: 20,
+            padding: 15,
           },
         },
         title: {
           display: true,
           text: 'Активность пользователей за Июль 2025',
-          font: { size: 18, family: 'Arial', weight: 'bold' },
-          color: '#FFFFFF',
-          padding: 10,
+          font: { size: 16, family: 'Inter, sans-serif', weight: '600' },
+          color: '#E5E7EB',
+          padding: { top: 10, bottom: 10 },
         },
         datalabels: {
           display: true,
-          color: '#FFFFFF',
-          font: { size: 12, family: 'Arial' },
+          color: '#E5E7EB',
+          font: { size: 12, family: 'Inter, sans-serif' },
           anchor: 'end',
           align: 'top',
-          formatter: (value) => value || 0,
-          backgroundColor: 'rgba(0, 162, 232, 0.7)', // Полупрозрачный синий
-          borderRadius: 4,
-          padding: 2,
+          formatter: (value) => value > 0 ? value : '',
+          backgroundColor: 'rgba(59, 130, 246, 0.8)',
+          borderRadius: 3,
+          padding: 4,
+        },
+        annotation: {
+          annotations: maxActivity > 0 ? [{
+            type: 'label',
+            xValue: maxIndex,
+            yValue: maxActivity,
+            content: `Пик: ${maxActivity}`,
+            backgroundColor: 'rgba(59, 130, 246, 0.9)',
+            color: '#FFFFFF',
+            font: { size: 12, family: 'Inter, sans-serif' },
+            borderRadius: 3,
+            padding: 4,
+            position: 'center',
+            yAdjust: -20,
+          }] : [],
         },
       },
       scales: {
@@ -210,43 +243,56 @@ async function generateActivityChart(dailyActivity) {
           title: {
             display: true,
             text: 'Дата',
-            font: { size: 14, family: 'Arial', weight: 'bold' },
-            color: '#FFFFFF',
+            font: { size: 12, family: 'Inter, sans-serif', weight: '500' },
+            color: '#E5E7EB',
           },
           ticks: {
-            color: '#FFFFFF',
-            font: { size: 12, family: 'Arial' },
+            color: '#E5E7EB',
+            font: { size: 10, family: 'Inter, sans-serif' },
+            maxRotation: 45,
+            minRotation: 45,
           },
           grid: {
-            color: 'rgba(255, 255, 255, 0.1)', // Тонкая белая сетка
-            borderColor: 'rgba(255, 255, 255, 0.3)',
+            color: 'rgba(255, 255, 255, 0.05)',
+            borderColor: 'rgba(255, 255, 255, 0.2)',
+            drawBorder: false,
           },
         },
         y: {
           title: {
             display: true,
-            text: 'Количество пользователей',
-            font: { size: 14, family: 'Arial', weight: 'bold' },
-            color: '#FFFFFF',
+            text: 'Пользователи',
+            font: { size: 12, family: 'Inter, sans-serif', weight: '500' },
+            color: '#E5E7EB',
           },
           ticks: {
-            color: '#FFFFFF',
-            font: { size: 12, family: 'Arial' },
+            color: '#E5E7EB',
+            font: { size: 10, family: 'Inter, sans-serif' },
             beginAtZero: true,
             stepSize: 1,
             precision: 0,
             callback: (value) => Number.isInteger(value) ? value : null,
           },
           grid: {
-            color: 'rgba(255, 255, 255, 0.1)',
-            borderColor: 'rgba(255, 255, 255, 0.3)',
+            color: 'rgba(255, 255, 255, 0.05)',
+            borderColor: 'rgba(255, 255, 255, 0.2)',
+            drawBorder: false,
           },
           min: 0,
           max: Math.max(...data, 10) + 5,
         },
       },
+      elements: {
+        line: {
+          borderJoinStyle: 'round',
+          borderCapStyle: 'round',
+        },
+        point: {
+          hoverBorderWidth: 2,
+        },
+      },
     },
-    plugins: [require('chartjs-plugin-datalabels')],
+    plugins: [require('chartjs-plugin-datalabels'), ChartAnnotation],
   });
 
   return canvas.toBuffer('image/png');
@@ -856,4 +902,4 @@ bot.on('text', async (ctx) => {
   }
 });
 
-module.exports = { processPayment};
+module.exports = { processPayment };

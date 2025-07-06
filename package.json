@@ -17,6 +17,7 @@
     "canvas": "^2.11.2",
     "chart.js": "^4.4.3",
     "chartjs-plugin-datalabels": "^2.2.0",
+    "chartjs-plugin-annotation": "^3.0.1",
     "uuid": "^10.0.0"
   },
   "engines": {
