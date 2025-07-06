@@ -329,7 +329,7 @@ bot.action('export_subscribers', async (ctx) => {
     await ctx.replyWithDocument({ source: buffer, filename: `subscribers_${new Date().toISOString().split('T')[0]}.xlsx` });
   } catch (error) {
     console.error(`[EXPORT_SUBSCRIBERS] Error for user ${userId}:`, error.message);
-    Рawait ctx.reply('Ошибка передачи подписчиков. Попробуйте позже.');
+    await ctx.reply('Ошибка передачи подписчиков. Попробуйте позже.');
   }
 });
 
