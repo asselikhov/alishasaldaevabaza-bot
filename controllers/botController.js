@@ -303,11 +303,12 @@ bot.action('back', async (ctx) => {
         ],
       };
 
-      // Проверяем, нужно ли редактировать сообщение
-      const currentText = ctx.message.text;
       const newText = user.paymentStatus === 'succeeded' && user.inviteLink ? await getPaidWelcomeMessage() : await getWelcomeMessage();
-      const currentMarkup = JSON.stringify(ctx.message.reply_markup);
       const newMarkup = JSON.stringify({ inline_keyboard: replyMarkup.inline_keyboard });
+
+      // Check if message exists and needs updating
+      const currentText = ctx.message?.text;
+      const currentMarkup = ctx.message?.reply_markup ? JSON.stringify(ctx.message.reply_markup) : undefined;
 
       if (currentText === newText && currentMarkup === newMarkup) {
         console.log(`[BACK] No changes needed for user ${userId}`);
@@ -315,10 +316,17 @@ bot.action('back', async (ctx) => {
       }
 
       try {
-        await ctx.editMessageText(newText, {
-          parse_mode: 'Markdown',
-          reply_markup: replyMarkup,
-        });
+        // Try editing the message if ctx.message exists
+        if (ctx.message) {
+          await ctx.editMessageText(newText, {
+            parse_mode: 'Markdown',
+            reply_markup: replyMarkup,
+          });
+        } else {
+          // Fallback to sending a new message
+          console.warn(`[BACK] ctx.message is undefined for user ${userId}, sending new message`);
+          await ctx.replyWithMarkdown(newText, { reply_markup: replyMarkup });
+        }
       } catch (editError) {
         console.warn(`[BACK] Failed to edit message for user ${userId}:`, editError.message);
         await ctx.replyWithMarkdown(newText, { reply_markup: replyMarkup });
