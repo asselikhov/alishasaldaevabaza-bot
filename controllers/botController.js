@@ -1,4 +1,3 @@
-```javascript
 const { bot, sendInviteLink, getSettings, getWelcomeMessage, getPaidWelcomeMessage, resetSettingsCache } = require('../services/telegram');
 const escape = require('markdown-escape');
 const { createPayment, getPayment } = require('../services/yookassa');
@@ -11,8 +10,6 @@ const adminIds = new Set((process.env.ADMIN_CHAT_IDS || '').split(',').map(id =>
 
 async function processPayment(ctx, userId, chatId) {
   try {
-    // Временный комментарий для отладки: проверьте, что переменные окружения настроены
-    // console.log(`[PAYMENT] Processing payment for user ${userId}, YOOKASSA_SHOP_ID: ${process.env.YOOKASSA_SHOP_ID || 'not set'}, YOOKASSA_SECRET_KEY: ${process.env.YOOKASSA_SECRET_KEY ? 'present' : 'not set'}`);
     const user = await User.findOne({ userId });
     if (user?.paymentStatus === 'succeeded' && user.inviteLink) {
       return ctx.reply('Вы уже оплатили доступ! Вот ваша одноразовая ссылка:', {
