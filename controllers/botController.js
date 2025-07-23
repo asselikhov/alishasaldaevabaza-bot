@@ -82,6 +82,42 @@ bot.command('checkpayment', async (ctx) => {
   }
 });
 
+bot.command('checkuser', async (ctx) => {
+  const userId = String(ctx.from.id);
+  if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
+  const targetUserId = ctx.message.text.split(' ')[1];
+  if (!targetUserId) return ctx.reply('Укажите ID пользователя: /checkuser <userId>');
+
+  try {
+    console.log(`[CHECKUSER] Checking user ${targetUserId} by admin ${userId}`);
+    const user = await User.findOne({ userId: targetUserId });
+    if (!user) return ctx.reply(`Пользователь ${targetUserId} не найден.`);
+
+    const channelId = process.env.CHANNEL_ID;
+    if (!channelId) return ctx.reply('Ошибка: ID канала не настроен.');
+
+    const isMember = await checkChannelMembership(targetUserId, channelId);
+    if (isMember && !user.joinedChannel) {
+      await User.updateOne({ userId: targetUserId }, { joinedChannel: true, inviteLinkUsed: true });
+      console.log(`[CHECKUSER] Updated joinedChannel to true for user ${targetUserId}`);
+    }
+
+    await ctx.reply(
+        `Пользователь ${targetUserId}:\n` +
+        `Имя: ${user.firstName || 'N/A'}\n` +
+        `Username: ${user.username ? '@' + user.username : 'N/A'}\n` +
+        `Статус платежа: ${user.paymentStatus || 'N/A'}\n` +
+        `Вступил в канал: ${isMember ? 'Да' : 'Нет'}\n` +
+        `Ссылка использована: ${user.inviteLinkUsed ? 'Да' : 'Нет'}\n` +
+        `Ссылка: ${user.inviteLink || 'N/A'}`,
+        { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    console.error(`[CHECKUSER] Error for user ${targetUserId}:`, error.message);
+    await ctx.reply('Ошибка при проверке статуса пользователя.');
+  }
+});
+
 bot.start(async (ctx) => {
   const userId = String(ctx.from.id);
   const chatId = String(ctx.chat.id);
@@ -136,8 +172,11 @@ bot.start(async (ctx) => {
 // Улучшенная функция для экранирования специальных символов в MarkdownV2
 function escapeMarkdownV2(text) {
   if (!text || typeof text !== 'string') return text || '';
-  // Экранируем специальные символы, включая точки, но исключаем эмодзи
-  return text.replace(/([_*[\]()~`>#+\-=|{}\.!\\])/g, '\\$1').replace(/\./g, '\\.');
+  console.log(`[ESCAPE_MARKDOWNV2] Input: ${text}`);
+  // Экранируем специальные символы, кроме точек в числовых последовательностях (1., 2., и т.д.)
+  const escaped = text.replace(/([_*[\]()~`>#+\-=|{}\.!\\])/g, '\\$1').replace(/(?<!\d)\.(?!\d)/g, '\\.');
+  console.log(`[ESCAPE_MARKDOWNV2] Output: ${escaped}`);
+  return escaped;
 }
 
 async function generateActivityChart(dailyActivity) {
@@ -265,15 +304,26 @@ async function generateActivityChart(dailyActivity) {
   }
 }
 
-// Проверка статуса членства в канале
-async function checkChannelMembership(userId, channelId) {
-  try {
-    const chatMember = await bot.telegram.getChatMember(channelId, userId);
-    return ['member', 'administrator', 'creator'].includes(chatMember.status);
-  } catch (error) {
-    console.error(`[CHECK_CHANNEL_MEMBERSHIP] Error for user ${userId}:`, error.message);
-    return false;
+// Проверка статуса членства в канале с повторными попытками
+async function checkChannelMembership(userId, channelId, retries = 3, delay = 1000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`[CHECK_CHANNEL_MEMBERSHIP] Attempt ${attempt} for user ${userId}`);
+      const chatMember = await bot.telegram.getChatMember(channelId, userId);
+      const isMember = ['member', 'administrator', 'creator'].includes(chatMember.status);
+      console.log(`[CHECK_CHANNEL_MEMBERSHIP] User ${userId} status: ${chatMember.status}, isMember: ${isMember}`);
+      return isMember;
+    } catch (error) {
+      console.error(`[CHECK_CHANNEL_MEMBERSHIP] Attempt ${attempt} failed for user ${userId}: ${error.message}`);
+      if (attempt < retries && error.message.includes('Too Many Requests')) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      return false;
+    }
   }
+  console.error(`[CHECK_CHANNEL_MEMBERSHIP] All ${retries} attempts failed for user ${userId}`);
+  return false;
 }
 
 bot.action('stats', async (ctx) => {
@@ -293,25 +343,16 @@ bot.action('stats', async (ctx) => {
       lastActivity: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     }).select('firstName username userId');
 
-    console.log(`[STATS] Raw activeUsersLast24h: ${JSON.stringify(activeUsersLast24h)}`);
+    console.log(`[STATS] Raw activeUsersLast24h: ${JSON.stringify(activeUsersLast24h.map(u => ({ userId: u.userId, firstName: u.firstName, username: u.username })))}`);
 
     let activeUsersList = 'Нет активных пользователей за последние 24 часа.';
     if (activeUsersLast24h.length > 0) {
       activeUsersList = activeUsersLast24h
-          .map(
-              (user, index) =>
-                  `${escapeMarkdownV2(String(index + 1) + '.')}\\. ${escapeMarkdownV2(user.firstName)} \\(@${escapeMarkdownV2(user.username || 'без username')}, ID: ${escapeMarkdownV2(user.userId)}\\)`
-          )
+          .map((user, index) => `${index + 1}. ${escapeMarkdownV2(user.firstName)} (@${escapeMarkdownV2(user.username || 'без username')}, ID: ${user.userId})`)
           .join('\n');
     }
 
-    let statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
-
-    if (statsMessage.length > 1024) {
-      const maxListLength = 1024 - statsMessage.length + activeUsersList.length - 50;
-      activeUsersList = activeUsersList.substring(0, maxListLength) + '\n...и другие';
-      statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
-    }
+    let statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
 
     console.log(`[STATS] Escaped statsMessage: ${statsMessage}`);
 
@@ -340,7 +381,6 @@ bot.action('stats', async (ctx) => {
       },
     ]);
 
-    // Формируем полный список дат
     const dateArray = [];
     let currentDate = new Date(startOfMonth);
     while (currentDate <= today) {
@@ -359,12 +399,17 @@ bot.action('stats', async (ctx) => {
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
 
+    // Отправляем список пользователей отдельно, если он длинный
+    if (activeUsersLast24h.length > 0) {
+      await ctx.reply(activeUsersList, { parse_mode: 'Markdown' });
+    }
+
     // Отправляем график
     const sentMessage = await ctx.replyWithPhoto(
         { source: chartBuffer },
         {
-          caption: statsMessage,
-          parse_mode: 'MarkdownV2',
+          caption: `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}`,
+          parse_mode: 'Markdown',
           reply_markup: { inline_keyboard: [[{ text: '↩️ Назад', callback_data: 'back' }]] },
         }
     );
@@ -444,23 +489,32 @@ bot.action('update_joined_status', async (ctx) => {
     const users = await User.find({ paymentStatus: 'succeeded' }).lean();
     if (!users.length) return ctx.reply('Нет оплаченных подписчиков для обновления.');
 
-    const channelId = process.env.CHANNEL_ID; // Убедитесь, что CHANNEL_ID задан в .env
+    const channelId = process.env.CHANNEL_ID;
     if (!channelId) {
       console.error(`[UPDATE_JOINED_STATUS] CHANNEL_ID not set`);
       return ctx.reply('Ошибка: ID канала не настроен.');
     }
 
     let updatedCount = 0;
+    const notJoinedUsers = [];
     for (const user of users) {
       const isMember = await checkChannelMembership(user.userId, channelId);
       if (isMember && !user.joinedChannel) {
-        await User.updateOne({ userId: user.userId }, { joinedChannel: true });
+        await User.updateOne({ userId: user.userId }, { joinedChannel: true, inviteLinkUsed: true });
         updatedCount++;
+        console.log(`[UPDATE_JOINED_STATUS] Updated user ${user.userId} to joinedChannel: true`);
+      } else if (!isMember) {
+        notJoinedUsers.push({ userId: user.userId, firstName: user.firstName, username: user.username });
       }
     }
 
-    await ctx.reply(`Обновлено статусов вступления: ${updatedCount} пользователей.`);
-    console.log(`[UPDATE_JOINED_STATUS] Updated ${updatedCount} users' joinedChannel status`);
+    await ctx.reply(
+        `Обновлено статусов вступления: ${updatedCount} пользователей.\n` +
+        (notJoinedUsers.length > 0
+            ? `Не вступили в канал:\n${notJoinedUsers.map(u => `${u.firstName} (@${u.username || 'без username'}, ID: ${u.userId})`).join('\n')}`
+            : 'Все оплаченные пользователи вступили в канал.')
+    );
+    console.log(`[UPDATE_JOINED_STATUS] Updated ${updatedCount} users' joinedChannel status, not joined: ${JSON.stringify(notJoinedUsers)}`);
   } catch (error) {
     console.error(`[UPDATE_JOINED_STATUS] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при обновлении статусов вступления. Попробуйте позже.');
@@ -478,13 +532,13 @@ bot.action('export_subscribers', async (ctx) => {
     const users = await User.find({ paymentStatus: 'succeeded' }).lean();
     if (!users.length) return ctx.reply('Нет оплаченных подписчиков для выгрузки.');
 
-    // Проверяем статус членства в канале
     const channelId = process.env.CHANNEL_ID;
     if (channelId) {
       for (const user of users) {
         const isMember = await checkChannelMembership(user.userId, channelId);
         if (isMember && !user.joinedChannel) {
-          await User.updateOne({ userId: user.userId }, { joinedChannel: true });
+          await User.updateOne({ userId: user.userId }, { joinedChannel: true, inviteLinkUsed: true });
+          console.log(`[EXPORT_SUBSCRIBERS] Updated user ${user.userId} to joinedChannel: true`);
         }
       }
     } else {

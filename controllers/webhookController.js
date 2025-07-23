@@ -61,4 +61,43 @@ async function handleYookassaWebhook(req, res) {
   }
 }
 
+bot.on('chat_member', async (ctx) => {
+  try {
+    const update = ctx.update.chat_member;
+    const userId = String(update.new_chat_member.user.id);
+    const channelId = String(update.chat.id);
+    const expectedChannelId = process.env.CHANNEL_ID;
+
+    console.log(`[CHAT_MEMBER] Received update for user ${userId} in chat ${channelId}`);
+
+    if (channelId !== expectedChannelId) {
+      console.log(`[CHAT_MEMBER] Ignoring update for unrelated chat ${channelId}`);
+      return;
+    }
+
+    const user = await User.findOne({ userId, paymentStatus: 'succeeded' });
+    if (!user) {
+      console.log(`[CHAT_MEMBER] No paid user found for userId ${userId}`);
+      return;
+    }
+
+    const isMember = ['member', 'administrator', 'creator'].includes(update.new_chat_member.status);
+    if (isMember && !user.joinedChannel) {
+      await User.updateOne(
+          { userId },
+          { joinedChannel: true, inviteLinkUsed: true, lastActivity: new Date() }
+      );
+      console.log(`[CHAT_MEMBER] Updated user ${userId} to joinedChannel: true, inviteLinkUsed: true`);
+    } else if (!isMember && user.joinedChannel) {
+      await User.updateOne(
+          { userId },
+          { joinedChannel: false, lastActivity: new Date() }
+      );
+      console.log(`[CHAT_MEMBER] Updated user ${userId} to joinedChannel: false`);
+    }
+  } catch (error) {
+    console.error(`[CHAT_MEMBER] Error processing chat_member update for user ${userId}:`, error.message);
+  }
+});
+
 module.exports = { handleYookassaWebhook };
