@@ -1,5 +1,4 @@
 const { bot, sendInviteLink, getSettings, getWelcomeMessage, getPaidWelcomeMessage, resetSettingsCache } = require('../services/telegram');
-const escape = require('markdown-escape');
 const { createPayment, getPayment } = require('../services/yookassa');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
@@ -134,10 +133,11 @@ bot.start(async (ctx) => {
   }
 });
 
-// Функция для экранирования специальных символов в MarkdownV2
+// Улучшенная функция для экранирования специальных символов в MarkdownV2
 function escapeMarkdownV2(text) {
-  if (!text) return text;
-  return text.replace(/([_*[\]()~`>#+\-=|{}\.!\\])/g, '\\$1');
+  if (!text || typeof text !== 'string') return text || '';
+  // Экранируем специальные символы, включая точки, но исключаем эмодзи
+  return text.replace(/([_*[\]()~`>#+\-=|{}\.!\\])/g, '\\$1').replace(/\./g, '\\.');
 }
 
 async function generateActivityChart(dailyActivity) {
@@ -265,6 +265,17 @@ async function generateActivityChart(dailyActivity) {
   }
 }
 
+// Проверка статуса членства в канале
+async function checkChannelMembership(userId, channelId) {
+  try {
+    const chatMember = await bot.telegram.getChatMember(channelId, userId);
+    return ['member', 'administrator', 'creator'].includes(chatMember.status);
+  } catch (error) {
+    console.error(`[CHECK_CHANNEL_MEMBERSHIP] Error for user ${userId}:`, error.message);
+    return false;
+  }
+}
+
 bot.action('stats', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
@@ -281,6 +292,8 @@ bot.action('stats', async (ctx) => {
     const activeUsersLast24h = await User.find({
       lastActivity: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     }).select('firstName username userId');
+
+    console.log(`[STATS] Raw activeUsersLast24h: ${JSON.stringify(activeUsersLast24h)}`);
 
     let activeUsersList = 'Нет активных пользователей за последние 24 часа.';
     if (activeUsersLast24h.length > 0) {
@@ -300,7 +313,7 @@ bot.action('stats', async (ctx) => {
       statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} \\| Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
     }
 
-    console.log(`[STATS] Generated statsMessage for user ${userId}: ${statsMessage}`);
+    console.log(`[STATS] Escaped statsMessage: ${statsMessage}`);
 
     // Собираем данные для графика
     const today = new Date();
@@ -381,6 +394,7 @@ bot.action('admin_panel', async (ctx) => {
         [{ text: 'Редактировать', callback_data: 'edit' }],
         [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
         [{ text: 'Статистика', callback_data: 'stats' }],
+        [{ text: 'Обновить статусы вступления', callback_data: 'update_joined_status' }],
         [{ text: '↩️ Назад', callback_data: 'back' }],
       ],
     };
@@ -418,6 +432,41 @@ bot.action('admin_panel', async (ctx) => {
   }
 });
 
+bot.action('update_joined_status', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = String(ctx.from.id);
+  if (!adminIds.has(userId)) return ctx.reply('Доступ запрещён.');
+
+  try {
+    console.log(`[UPDATE_JOINED_STATUS] Processing for user ${userId}`);
+    await User.updateOne({ userId }, { lastActivity: new Date() });
+
+    const users = await User.find({ paymentStatus: 'succeeded' }).lean();
+    if (!users.length) return ctx.reply('Нет оплаченных подписчиков для обновления.');
+
+    const channelId = process.env.CHANNEL_ID; // Убедитесь, что CHANNEL_ID задан в .env
+    if (!channelId) {
+      console.error(`[UPDATE_JOINED_STATUS] CHANNEL_ID not set`);
+      return ctx.reply('Ошибка: ID канала не настроен.');
+    }
+
+    let updatedCount = 0;
+    for (const user of users) {
+      const isMember = await checkChannelMembership(user.userId, channelId);
+      if (isMember && !user.joinedChannel) {
+        await User.updateOne({ userId: user.userId }, { joinedChannel: true });
+        updatedCount++;
+      }
+    }
+
+    await ctx.reply(`Обновлено статусов вступления: ${updatedCount} пользователей.`);
+    console.log(`[UPDATE_JOINED_STATUS] Updated ${updatedCount} users' joinedChannel status`);
+  } catch (error) {
+    console.error(`[UPDATE_JOINED_STATUS] Error for user ${userId}:`, error.message);
+    await ctx.reply('Ошибка при обновлении статусов вступления. Попробуйте позже.');
+  }
+});
+
 bot.action('export_subscribers', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = String(ctx.from.id);
@@ -428,6 +477,21 @@ bot.action('export_subscribers', async (ctx) => {
     await User.updateOne({ userId }, { lastActivity: new Date() });
     const users = await User.find({ paymentStatus: 'succeeded' }).lean();
     if (!users.length) return ctx.reply('Нет оплаченных подписчиков для выгрузки.');
+
+    // Проверяем статус членства в канале
+    const channelId = process.env.CHANNEL_ID;
+    if (channelId) {
+      for (const user of users) {
+        const isMember = await checkChannelMembership(user.userId, channelId);
+        if (isMember && !user.joinedChannel) {
+          await User.updateOne({ userId: user.userId }, { joinedChannel: true });
+        }
+      }
+    } else {
+      console.warn(`[EXPORT_SUBSCRIBERS] CHANNEL_ID not set, skipping membership check`);
+    }
+
+    console.log(`[EXPORT_SUBSCRIBERS] Raw users data: ${JSON.stringify(users.map(u => ({ userId: u.userId, firstName: u.firstName, username: u.username, joinedChannel: u.joinedChannel })))}`);
 
     const ExcelJS = require('exceljs');
     const workbook = new ExcelJS.Workbook();
@@ -561,6 +625,7 @@ bot.action('back', async (ctx) => {
           [{ text: 'Редактировать', callback_data: 'edit' }],
           [{ text: 'Выгрузить подписчиков', callback_data: 'export_subscribers' }],
           [{ text: 'Статистика', callback_data: 'stats' }],
+          [{ text: 'Обновить статусы вступления', callback_data: 'update_joined_status' }],
           [{ text: '↩️ Назад', callback_data: 'back' }],
         ],
       };
