@@ -535,7 +535,7 @@ bot.action('export_subscribers', async (ctx) => {
       console.warn(`[EXPORT_SUBSCRIBERS] CHANNEL_ID not set, skipping membership check`);
     }
 
-    console.log(`[EXPORT_SUBSCRIBERS] Raw users data: ${JSON.stringify(users.map(u => ({ userId: u.userId, firstName: u.firstName, username: u.username, joinedChannel: u.joinedChannel, inviteLink: u.inviteLink })))}`);
+    console.log(`[EXPORT_SUBSCRIBERS] Raw users data: ${JSON.stringify(users.map(u => ({ userId: u.userId, firstName: u.firstName, username: u.username, inviteLink: u.inviteLink, joinedChannel: u.joinedChannel })))}`);
 
     const ExcelJS = require('exceljs');
     const workbook = new ExcelJS.Workbook();
@@ -547,8 +547,8 @@ bot.action('export_subscribers', async (ctx) => {
       { header: 'ID Платежа', key: 'paymentId', width: 30 },
       { header: 'Локальный ID Платежа', key: 'localPaymentId', width: 30 },
       { header: 'Вступил в Канал', key: 'joinedChannel', width: 15 },
-      { header: 'Ссылка Приглашения', key: 'InviteLink', width: 40 },
-      { header: 'Срок Ссылки', key: 'InviteLinkExpires', width: 15 },
+      { header: 'Ссылка Приглашения', key: 'inviteLink', width: 40 }, // Обновлено название ключа
+      { header: 'Срок Ссылки', key: 'inviteLinkExpires', width: 20 },
       { header: 'Имя', key: 'firstName', width: 20 },
       { header: 'Username', key: 'username', width: 20 },
       { header: 'Телефон', key: 'phoneNumber', width: 15 },
@@ -570,8 +570,8 @@ bot.action('export_subscribers', async (ctx) => {
       paymentId: user.paymentId || 'N/A',
       localPaymentId: user.localPaymentId || 'N/A',
       joinedChannel: user.joinedChannel ? 'Да' : 'Нет',
-      inviteLink: user.inviteLink || 'N/A',
-      inviteLinkExpires: user.inviteLinkExpires ? new Date(user.inviteLinkExpires).toLocaleString('ru-RU') : 'Без срока',
+      inviteLink: user.inviteLink || 'N/A', // Используем поле inviteLink из базы данных
+      inviteLinkExpires: user.inviteLinkExpires ? new Date(user.inviteLinkExpires).toLocaleString('ru-RU') : 'N/A',
       firstName: user.firstName || 'N/A',
       username: user.username ? `@${user.username}` : 'N/A',
       phoneNumber: user.phoneNumber || 'N/A',
