@@ -49,9 +49,9 @@ async function sendInviteLink(user, ctx, paymentId, retries = 3, delay = 1000) {
 
     // Генерация ссылки с повторными попытками
     let chatInvite;
+    const expiresDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60; // Срок действия 24 часа
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        const expiresDate = Math.floor(Date.now() / 1000) + 24 * 60 * 60; // Срок действия 24 часа
         chatInvite = await bot.telegram.createChatInviteLink(process.env.CHANNEL_ID, {
           name: `Invite for user_${user.userId}_${uuidv4()}`,
           member_limit: 1,
@@ -70,8 +70,15 @@ async function sendInviteLink(user, ctx, paymentId, retries = 3, delay = 1000) {
       }
     }
 
-    if (!chatInvite) {
+    if (!chatInvite || !chatInvite.invite_link) {
       throw new Error(`[INVITE] Failed to create invite link for user ${user.userId} after ${retries} attempts`);
+    }
+
+    // Проверяем наличие expires_date
+    const inviteLinkExpires = chatInvite.expires_date ? chatInvite.expires_date * 1000 : expiresDate * 1000;
+    if (isNaN(inviteLinkExpires)) {
+      console.error(`[INVITE] Invalid inviteLinkExpires for user ${user.userId}: ${chatInvite.expires_date}`);
+      throw new Error(`[INVITE] Invalid expires_date received from Telegram API: ${chatInvite.expires_date}`);
     }
 
     // Отправка документа оплаты
@@ -90,7 +97,7 @@ async function sendInviteLink(user, ctx, paymentId, retries = 3, delay = 1000) {
         {
           paymentStatus: 'succeeded',
           inviteLink: chatInvite.invite_link,
-          inviteLinkExpires: chatInvite.expires_date * 1000,
+          inviteLinkExpires: inviteLinkExpires,
           inviteLinkUsed: false,
           paymentDate: new Date(paymentData.created_at),
           paymentDocument,
