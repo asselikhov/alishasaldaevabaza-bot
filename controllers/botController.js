@@ -287,7 +287,7 @@ bot.action('stats', async (ctx) => {
       activeUsersList = activeUsersLast24h
           .map(
               (user, index) =>
-                  `${escapeMarkdownV2(String(index + 1))}\\. ${escapeMarkdownV2(user.firstName)} \\(@${escapeMarkdownV2(user.username || 'без username')}, ID: ${escapeMarkdownV2(user.userId)}\\)`
+                  `${escapeMarkdownV2(String(index + 1) + '.')}\\. ${escapeMarkdownV2(user.firstName)} \\(@${escapeMarkdownV2(user.username || 'без username')}, ID: ${escapeMarkdownV2(user.userId)}\\)`
           )
           .join('\n');
     }
