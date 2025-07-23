@@ -66,14 +66,31 @@ bot.command('checkpayment', async (ctx) => {
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard: [[{ text: 'Присоединиться', url: user.inviteLink }]] },
       });
+      console.log(`[CHECKPAYMENT] Sent existing invite link for user ${userId}: ${user.inviteLink}`);
       return;
     }
 
     const payment = await getPayment(user.paymentId);
-    if (payment.status === 'succeeded') await sendInviteLink(user, ctx, user.paymentId);
-    else await ctx.reply(`Статус вашего платежа: ${payment.status}. Пожалуйста, завершите оплату или свяжитесь с поддержкой.`, {
-      reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
-    });
+    if (payment.status === 'succeeded') {
+      const inviteLink = await sendInviteLink(user, ctx, user.paymentId);
+      await ctx.reply(await getPaidWelcomeMessage(), {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }, { text: '💡 О канале', callback_data: 'about' }],
+          ],
+        },
+      });
+      await ctx.reply('Ваша уникальная одноразовая ссылка для вступления в закрытый канал:', {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: 'Присоединиться', url: inviteLink }]] },
+      });
+      console.log(`[CHECKPAYMENT] Sent new invite link for user ${userId}: ${inviteLink}`);
+    } else {
+      await ctx.reply(`Статус вашего платежа: ${payment.status}. Пожалуйста, завершите оплату или свяжитесь с поддержкой.`, {
+        reply_markup: { inline_keyboard: [[{ text: '💬 Техподдержка', url: (await getSettings()).supportLink }]] },
+      });
+    }
   } catch (error) {
     console.error(`[CHECKPAYMENT] Error for user ${userId}:`, error.message);
     await ctx.reply('Ошибка при проверке статуса платежа. Попробуйте позже или свяжитесь с поддержкой.', {
@@ -173,7 +190,6 @@ bot.start(async (ctx) => {
 function escapeMarkdownV2(text) {
   if (!text || typeof text !== 'string') return text || '';
   console.log(`[ESCAPE_MARKDOWNV2] Input: ${text}`);
-  // Экранируем специальные символы, кроме точек в числовых последовательностях (1., 2., и т.д.)
   const escaped = text.replace(/([_*[\]()~`>#+\-=|{}\.!\\])/g, '\\$1').replace(/(?<!\d)\.(?!\d)/g, '\\.');
   console.log(`[ESCAPE_MARKDOWNV2] Output: ${escaped}`);
   return escaped;
@@ -304,7 +320,6 @@ async function generateActivityChart(dailyActivity) {
   }
 }
 
-// Проверка статуса членства в канале с повторными попытками
 async function checkChannelMembership(userId, channelId, retries = 3, delay = 1000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -336,27 +351,9 @@ bot.action('stats', async (ctx) => {
     console.log(`[STATS] Processing for user ${userId}`);
     await User.updateOne({ userId }, { lastActivity: new Date() });
 
-    // Собираем текстовую статистику
     const totalUsers = await User.countDocuments();
     const paidUsers = await User.countDocuments({ paymentStatus: 'succeeded' });
-    const activeUsersLast24h = await User.find({
-      lastActivity: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-    }).select('firstName username userId');
 
-    console.log(`[STATS] Raw activeUsersLast24h: ${JSON.stringify(activeUsersLast24h.map(u => ({ userId: u.userId, firstName: u.firstName, username: u.username })))}`);
-
-    let activeUsersList = 'Нет активных пользователей за последние 24 часа.';
-    if (activeUsersLast24h.length > 0) {
-      activeUsersList = activeUsersLast24h
-          .map((user, index) => `${index + 1}. ${escapeMarkdownV2(user.firstName)} (@${escapeMarkdownV2(user.username || 'без username')}, ID: ${user.userId})`)
-          .join('\n');
-    }
-
-    let statsMessage = `📊 Статистика:\n➖➖➖➖➖➖➖➖➖➖➖➖➖➖\nПользователей: ${totalUsers} | Подписчиков: ${paidUsers}\n\nПосетители за последние 24 часа:\n${activeUsersList}`;
-
-    console.log(`[STATS] Escaped statsMessage: ${statsMessage}`);
-
-    // Собираем данные для графика
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -392,19 +389,12 @@ bot.action('stats', async (ctx) => {
 
     console.log(`[STATS] Generated dateArray: ${JSON.stringify(dateArray)}`);
 
-    // Генерируем график
     const chartBuffer = await generateActivityChart(dateArray);
 
     ctx.session = ctx.session || {};
     ctx.session.navHistory = ctx.session.navHistory || [];
     ctx.session.navHistory.push('admin_panel');
 
-    // Отправляем список пользователей отдельно, если он длинный
-    if (activeUsersLast24h.length > 0) {
-      await ctx.reply(activeUsersList, { parse_mode: 'Markdown' });
-    }
-
-    // Отправляем график
     const sentMessage = await ctx.replyWithPhoto(
         { source: chartBuffer },
         {
@@ -545,7 +535,7 @@ bot.action('export_subscribers', async (ctx) => {
       console.warn(`[EXPORT_SUBSCRIBERS] CHANNEL_ID not set, skipping membership check`);
     }
 
-    console.log(`[EXPORT_SUBSCRIBERS] Raw users data: ${JSON.stringify(users.map(u => ({ userId: u.userId, firstName: u.firstName, username: u.username, joinedChannel: u.joinedChannel })))}`);
+    console.log(`[EXPORT_SUBSCRIBERS] Raw users data: ${JSON.stringify(users.map(u => ({ userId: u.userId, firstName: u.firstName, username: u.username, joinedChannel: u.joinedChannel, inviteLink: u.inviteLink })))}`);
 
     const ExcelJS = require('exceljs');
     const workbook = new ExcelJS.Workbook();
